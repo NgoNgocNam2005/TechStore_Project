@@ -1,0 +1,18 @@
+{
+  "name": "hoc-react-fullstack",
+  "version": "1.0.0",
+  "description": "Dự án học React và Node.js Express Fullstack",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix client run build",
+    "lint": "npm --prefix client run lint",
+    "db:migrate": "npm --prefix server run db:migrate",
+    "test:smoke": "npm --prefix server run test:smoke"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
