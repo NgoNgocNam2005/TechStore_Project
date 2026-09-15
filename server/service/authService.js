@@ -7,7 +7,8 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { appConfig } from "../config/appConfig.js";
-import { pool } from "../config/database.js";
+import { Op } from "sequelize";
+import { RefreshTokenModel } from "../models/index.js";
 
 const hashRefreshToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
@@ -20,10 +21,11 @@ const createAccessToken = (user) => jwt.sign(
 const createRefreshToken = async (userId) => {
   const token = crypto.randomBytes(48).toString("base64url");
   const expiresAt = new Date(Date.now() + appConfig.refreshTokenDays * 24 * 60 * 60 * 1000);
-  await pool.execute(
-    "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
-    [userId, hashRefreshToken(token), expiresAt]
-  );
+  await RefreshTokenModel.create({
+    userId,
+    tokenHash: hashRefreshToken(token),
+    expiresAt
+  });
   return token;
 };
 
@@ -55,21 +57,25 @@ export const authService = {
   async refresh(refreshToken) {
     if (!refreshToken) throw new AppError("Refresh token không tồn tại", 401);
 
-    const tokenHash = hashRefreshToken(refreshToken);
-    const [rows] = await pool.query(
-      `SELECT rt.id, rt.user_id
-       FROM refresh_tokens rt
-       WHERE rt.token_hash = ?
-         AND rt.revoked_at IS NULL
-         AND rt.expires_at > NOW()`,
-      [tokenHash]
-    );
+    const tokenRecord = await RefreshTokenModel.findOne({
+      where: {
+        tokenHash: hashRefreshToken(refreshToken),
+        revokedAt: null,
+        expiresAt: { [Op.gt]: new Date() }
+      }
+    });
+    const rows = tokenRecord
+      ? [{ id: tokenRecord.id, user_id: tokenRecord.userId }]
+      : [];
     if (rows.length === 0) throw new AppError("Refresh token không hợp lệ hoặc đã hết hạn", 401);
 
     const user = await userRepository.findById(rows[0].user_id);
     if (!user) throw new AppError("Tài khoản không còn tồn tại", 401);
 
-    await pool.execute("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = ?", [rows[0].id]);
+    await RefreshTokenModel.update(
+      { revokedAt: new Date() },
+      { where: { id: rows[0].id, revokedAt: null } }
+    );
     return {
       token: createAccessToken(user),
       refreshToken: await createRefreshToken(user.id),
@@ -79,9 +85,9 @@ export const authService = {
 
   async revokeRefreshToken(refreshToken) {
     if (!refreshToken) return;
-    await pool.execute(
-      "UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = ? AND revoked_at IS NULL",
-      [hashRefreshToken(refreshToken)]
+    await RefreshTokenModel.update(
+      { revokedAt: new Date() },
+      { where: { tokenHash: hashRefreshToken(refreshToken), revokedAt: null } }
     );
   },
 

@@ -306,6 +306,22 @@ input:focus {
   color: var(--text-muted);
 }
 
+.review-link {
+  align-self: flex-start;
+  margin: 0 0 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #a5b4fc;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.review-link:hover {
+  color: #c4b5fd;
+  text-decoration: underline;
+}
+
 .phone-footer {
   margin-top: auto;
   display: flex;
@@ -410,6 +426,104 @@ input:focus {
   color: var(--text-dim);
   font-size: 1.5rem;
   cursor: pointer;
+}
+
+.review-modal {
+  max-width: 680px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.review-product-name {
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.review-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.review-form label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.star-picker {
+  display: flex;
+  gap: 4px;
+}
+
+.star-picker button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 1.8rem;
+  cursor: pointer;
+}
+
+.star-picker button.selected,
+.review-stars {
+  color: #fbbf24;
+}
+
+.review-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 10px 12px;
+  font-family: inherit;
+}
+
+.review-note {
+  color: var(--text-muted);
+  padding: 10px 0;
+}
+
+.review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.review-item {
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.review-item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-date {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+.review-stars {
+  margin: 6px 0;
+  letter-spacing: 1px;
+}
+
+.review-item p {
+  margin: 8px 0 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 .form-group {

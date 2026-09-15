@@ -1,8 +1,9 @@
-import { pool } from "../config/database.js";
+import { QueryTypes } from "sequelize";
+import { sequelize } from "../config/database.js";
 
 const run = async () => {
   try {
-    await pool.query(`
+    await sequelize.query(`
       CREATE TABLE IF NOT EXISTS refresh_tokens (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         user_id BIGINT NOT NULL,
@@ -17,7 +18,7 @@ const run = async () => {
     `);
     console.log("Đã kiểm tra bảng refresh_tokens.");
 
-    await pool.query(`
+    await sequelize.query(`
       CREATE TABLE IF NOT EXISTS addresses (
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         user_id BIGINT NOT NULL,
@@ -37,30 +38,51 @@ const run = async () => {
     `);
     console.log("Đã kiểm tra bảng addresses.");
 
-    const [columns] = await pool.query("SHOW COLUMNS FROM orders LIKE 'user_id'");
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS wishlists (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        product_id BIGINT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_product (user_id, product_id),
+        INDEX idx_wishlist_user (user_id),
+        CONSTRAINT fk_wishlist_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_wishlist_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log("Đã kiểm tra bảng wishlists.");
 
-    const [statusColumns] = await pool.query("SHOW COLUMNS FROM orders LIKE 'status'");
+    const columns = await sequelize.query("SHOW COLUMNS FROM orders LIKE 'user_id'", {
+      type: QueryTypes.SELECT
+    });
+
+    const statusColumns = await sequelize.query("SHOW COLUMNS FROM orders LIKE 'status'", {
+      type: QueryTypes.SELECT
+    });
     if (statusColumns[0] && !String(statusColumns[0].Type).includes("DELIVERED")) {
-      await pool.query(
+      await sequelize.query(
         "ALTER TABLE orders MODIFY status ENUM('PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED') NOT NULL DEFAULT 'PENDING'"
       );
       console.log("Đã bổ sung trạng thái DELIVERED cho orders.status.");
     }
 
     if (columns.length === 0) {
-      await pool.query("ALTER TABLE orders ADD COLUMN user_id BIGINT NULL AFTER id");
+      await sequelize.query("ALTER TABLE orders ADD COLUMN user_id BIGINT NULL AFTER id");
 
-      const [customers] = await pool.query(
-        "SELECT id FROM users WHERE role = 'CUSTOMER' ORDER BY id LIMIT 1"
+      const customers = await sequelize.query(
+        "SELECT id FROM users WHERE role = 'CUSTOMER' ORDER BY id LIMIT 1",
+        { type: QueryTypes.SELECT }
       );
       if (customers.length === 0) {
         throw new Error("Không có tài khoản CUSTOMER để gán cho các đơn hàng cũ");
       }
 
-      await pool.query("UPDATE orders SET user_id = ? WHERE user_id IS NULL", [customers[0].id]);
-      await pool.query("ALTER TABLE orders MODIFY user_id BIGINT NOT NULL");
-      await pool.query("ALTER TABLE orders ADD INDEX idx_order_user (user_id)");
-      await pool.query(
+      await sequelize.query("UPDATE orders SET user_id = ? WHERE user_id IS NULL", {
+        replacements: [customers[0].id]
+      });
+      await sequelize.query("ALTER TABLE orders MODIFY user_id BIGINT NOT NULL");
+      await sequelize.query("ALTER TABLE orders ADD INDEX idx_order_user (user_id)");
+      await sequelize.query(
         "ALTER TABLE orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT"
       );
       console.log("Đã migrate orders.user_id và liên kết các đơn cũ với CUSTOMER đầu tiên.");
@@ -68,7 +90,7 @@ const run = async () => {
       console.log("orders.user_id đã tồn tại, không cần migrate.");
     }
   } finally {
-    await pool.end();
+    await sequelize.close();
   }
 };
 

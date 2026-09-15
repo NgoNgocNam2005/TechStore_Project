@@ -1,23 +1,8 @@
-import { pool } from "../config/database.js";
+import { sequelize } from "../config/database.js";
+import { AddressModel } from "../models/index.js";
 import { Address } from "../entity/Address.js";
 
-const columns = `id, user_id, label, recipient_name, phone, address_line,
-  ward, district, province, is_default, created_at, updated_at`;
-
-const toEntity = row => row && new Address({
-  id: row.id,
-  userId: row.user_id,
-  label: row.label,
-  recipientName: row.recipient_name,
-  phone: row.phone,
-  addressLine: row.address_line,
-  ward: row.ward,
-  district: row.district,
-  province: row.province,
-  isDefault: row.is_default,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at
-});
+const toEntity = row => row && new Address(row.get({ plain: true }));
 
 const normalizeId = id => {
   const value = Number(id);
@@ -28,10 +13,10 @@ export const addressRepository = {
   async findByUserId(userId) {
     const normalizedUserId = normalizeId(userId);
     if (!normalizedUserId) return [];
-    const [rows] = await pool.query(
-      `SELECT ${columns} FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC`,
-      [normalizedUserId]
-    );
+    const rows = await AddressModel.findAll({
+      where: { userId: normalizedUserId },
+      order: [["isDefault", "DESC"], ["id", "DESC"]]
+    });
     return rows.map(toEntity);
   },
 
@@ -39,34 +24,36 @@ export const addressRepository = {
     const addressId = normalizeId(id);
     const normalizedUserId = normalizeId(userId);
     if (!addressId || !normalizedUserId) return null;
-    const [rows] = await pool.query(
-      `SELECT ${columns} FROM addresses WHERE id = ? AND user_id = ?`,
-      [addressId, normalizedUserId]
-    );
-    return toEntity(rows[0]);
+    return toEntity(await AddressModel.findOne({
+      where: { id: addressId, userId: normalizedUserId }
+    }));
   },
 
   async create(userId, fields) {
-    const connection = await pool.getConnection();
+    const transaction = await sequelize.transaction();
     try {
-      await connection.beginTransaction();
       if (fields.isDefault) {
-        await connection.execute("UPDATE addresses SET is_default = FALSE WHERE user_id = ?", [userId]);
+        await AddressModel.update(
+          { isDefault: false },
+          { where: { userId }, transaction }
+        );
       }
-      const [result] = await connection.execute(
-        `INSERT INTO addresses
-          (user_id, label, recipient_name, phone, address_line, ward, district, province, is_default)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, fields.label, fields.recipientName, fields.phone, fields.addressLine,
-          fields.ward || null, fields.district || null, fields.province || null, fields.isDefault]
-      );
-      await connection.commit();
-      return this.findByIdForUser(result.insertId, userId);
+      const row = await AddressModel.create({
+        userId,
+        label: fields.label,
+        recipientName: fields.recipientName,
+        phone: fields.phone,
+        addressLine: fields.addressLine,
+        ward: fields.ward || null,
+        district: fields.district || null,
+        province: fields.province || null,
+        isDefault: Boolean(fields.isDefault)
+      }, { transaction });
+      await transaction.commit();
+      return toEntity(row);
     } catch (error) {
-      await connection.rollback();
+      await transaction.rollback();
       throw error;
-    } finally {
-      connection.release();
     }
   },
 
@@ -74,42 +61,34 @@ export const addressRepository = {
     const addressId = normalizeId(id);
     const normalizedUserId = normalizeId(userId);
     if (!addressId || !normalizedUserId) return null;
-    const connection = await pool.getConnection();
+    const transaction = await sequelize.transaction();
     try {
-      await connection.beginTransaction();
       if (fields.isDefault === true) {
-        await connection.execute("UPDATE addresses SET is_default = FALSE WHERE user_id = ?", [normalizedUserId]);
-      }
-      const assignments = [];
-      const values = [];
-      const add = (column, value) => {
-        if (value !== undefined) {
-          assignments.push(`${column} = ?`);
-          values.push(value);
-        }
-      };
-      add("label", fields.label);
-      add("recipient_name", fields.recipientName);
-      add("phone", fields.phone);
-      add("address_line", fields.addressLine);
-      add("ward", fields.ward || null);
-      add("district", fields.district || null);
-      add("province", fields.province || null);
-      add("is_default", fields.isDefault);
-      if (assignments.length > 0) {
-        values.push(addressId, normalizedUserId);
-        await connection.execute(
-          `UPDATE addresses SET ${assignments.join(", ")} WHERE id = ? AND user_id = ?`,
-          values
+        await AddressModel.update(
+          { isDefault: false },
+          { where: { userId: normalizedUserId }, transaction }
         );
       }
-      await connection.commit();
+      const values = {};
+      if (fields.label !== undefined) values.label = fields.label;
+      if (fields.recipientName !== undefined) values.recipientName = fields.recipientName;
+      if (fields.phone !== undefined) values.phone = fields.phone;
+      if (fields.addressLine !== undefined) values.addressLine = fields.addressLine;
+      if (fields.ward !== undefined) values.ward = fields.ward || null;
+      if (fields.district !== undefined) values.district = fields.district || null;
+      if (fields.province !== undefined) values.province = fields.province || null;
+      if (fields.isDefault !== undefined) values.isDefault = fields.isDefault;
+      if (Object.keys(values).length > 0) {
+        await AddressModel.update(values, {
+          where: { id: addressId, userId: normalizedUserId },
+          transaction
+        });
+      }
+      await transaction.commit();
       return this.findByIdForUser(addressId, normalizedUserId);
     } catch (error) {
-      await connection.rollback();
+      await transaction.rollback();
       throw error;
-    } finally {
-      connection.release();
     }
   },
 
@@ -117,10 +96,8 @@ export const addressRepository = {
     const addressId = normalizeId(id);
     const normalizedUserId = normalizeId(userId);
     if (!addressId || !normalizedUserId) return false;
-    const [result] = await pool.execute(
-      "DELETE FROM addresses WHERE id = ? AND user_id = ?",
-      [addressId, normalizedUserId]
-    );
-    return result.affectedRows > 0;
+    return (await AddressModel.destroy({
+      where: { id: addressId, userId: normalizedUserId }
+    })) > 0;
   }
 };

@@ -1,4 +1,5 @@
-import { pool } from "../config/database.js";
+import { QueryTypes } from "sequelize";
+import { sequelize } from "../config/database.js";
 import jwt from "jsonwebtoken";
 import { appConfig } from "../config/appConfig.js";
 
@@ -107,12 +108,19 @@ const run = async () => {
         try { await request(`/orders/${id}/cancel`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } }); } catch {}
       }
     }
-    const [testUsers] = await pool.execute("SELECT id FROM users WHERE username = ?", [username]);
+    const testUsers = await sequelize.query(
+      "SELECT id FROM users WHERE username = ?",
+      { replacements: [username], type: QueryTypes.SELECT }
+    );
     for (const user of testUsers) {
-      await pool.execute("DELETE FROM orders WHERE user_id = ?", [user.id]);
-      await pool.execute("DELETE FROM users WHERE id = ?", [user.id]);
+      await sequelize.query("DELETE FROM orders WHERE user_id = ?", {
+        replacements: [user.id]
+      });
+      await sequelize.query("DELETE FROM users WHERE id = ?", {
+        replacements: [user.id]
+      });
     }
-    await pool.end();
+    await sequelize.close();
   }
 };
 

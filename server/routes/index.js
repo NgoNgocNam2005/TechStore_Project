@@ -3,25 +3,29 @@ import productRoute from "./productRoute.js";
 import orderRoute from "./orderRoute.js";
 import userRoute from "./userRoute.js";
 import authRoute from "./authRoute.js";
+import reviewRoute from "./reviewRoute.js";
 import { appConfig } from "../config/appConfig.js";
 
 const rootRouter = express.Router();
 
-// 1. Healthcheck / Thông tin cửa hàng
+// Health check
 rootRouter.get("/status", (req, res) => {
   res.json({
     status: "online",
     storeName: appConfig.storeName,
     message: "Hệ thống Backend TechStore đang hoạt động trơn tru!",
     timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()) + "s"
+    uptime: `${Math.floor(process.uptime())}s`,
   });
 });
 
-// 2. Chia nhánh đường dẫn theo từng phân hệ nghiệp vụ
-rootRouter.use("/auth", authRoute);        // -> /api/auth
-rootRouter.use("/products", productRoute); // -> /api/products
-rootRouter.use("/orders", orderRoute);     // -> /api/orders
-rootRouter.use("/users", userRoute);       // -> /api/users
+// Các module
+rootRouter.use("/auth", authRoute);
+rootRouter.use("/products", productRoute);
+rootRouter.use("/orders", orderRoute);
+rootRouter.use("/users", userRoute);
+
+// reviewRoute đã chứa sẵn /products/... và /reviews/...
+rootRouter.use(reviewRoute);
 
 export default rootRouter;

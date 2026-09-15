@@ -13,7 +13,7 @@ router.post("/me/addresses", authenticate, userController.createAddress);
 router.patch("/me/addresses/:addressId", authenticate, userController.updateAddress);
 router.delete("/me/addresses/:addressId", authenticate, userController.deleteAddress);
 router.get("/me/wishlist", authenticate, wishlistController.getMine);
-router.post("/me/wishlist", authenticate, wishlistController.add);
+router.post("/me/wishlist/:productId", authenticate, wishlistController.add);
 router.delete("/me/wishlist/:productId", authenticate, wishlistController.remove);
 // Quyền Admin: Quản lý nhân viên
 router.get("/employees", authenticate, authorize("ADMIN"), userController.getEmployees);

@@ -1,79 +1,67 @@
-import { pool } from "../config/database.js";
+import { Op, col, fn, where } from "sequelize";
+import { UserModel } from "../models/index.js";
 import { User } from "../entity/User.js";
 import { Role } from "../enums/Role.js";
 
-const columns = "id, username, password, full_name, role, phone, email, created_at";
-const toEntity = (row) => row && new User({
-  id: row.id, username: row.username, password: row.password,
-  fullName: row.full_name, role: row.role, phone: row.phone,
-  email: row.email, createdAt: row.created_at
-});
+const toEntity = (row) => row && new User(row.get({ plain: true }));
 
 export const userRepository = {
   async findAll() {
-    const [rows] = await pool.query(`SELECT ${columns} FROM users ORDER BY id DESC`);
+    const rows = await UserModel.findAll({ order: [["id", "DESC"]] });
     return rows.map(toEntity);
   },
   async findById(id) {
-    const [rows] = await pool.query(`SELECT ${columns} FROM users WHERE id = ?`, [id]);
-    return toEntity(rows[0]);
+    return toEntity(await UserModel.findByPk(id));
   },
   async findByUsername(username) {
-    const [rows] = await pool.query(
-      `SELECT ${columns} FROM users WHERE LOWER(username) = LOWER(?)`,
-      [username]
-    );
-    return toEntity(rows[0]);
+    const row = await UserModel.findOne({
+      where: where(fn("LOWER", col("username")), username.toLowerCase())
+    });
+    return toEntity(row);
   },
   async findEmployees() {
-    const [rows] = await pool.query(
-      `SELECT ${columns} FROM users WHERE role IN (?, ?, ?) ORDER BY id DESC`,
-      [Role.ADMIN, Role.MANAGER, Role.SALER]
-    );
+    const rows = await UserModel.findAll({
+      where: { role: { [Op.in]: [Role.ADMIN, Role.MANAGER, Role.SALER] } },
+      order: [["id", "DESC"]]
+    });
     return rows.map(toEntity);
   },
   async create(userEntity) {
-    const [result] = await pool.execute(
-      "INSERT INTO users (username, password, full_name, role, phone, email) VALUES (?, ?, ?, ?, ?, ?)",
-      [userEntity.username, userEntity.password, userEntity.fullName, userEntity.role, userEntity.phone || null, userEntity.email || null]
-    );
-    return this.findById(result.insertId);
+    const row = await UserModel.create({
+      username: userEntity.username,
+      password: userEntity.password,
+      fullName: userEntity.fullName,
+      role: userEntity.role,
+      phone: userEntity.phone || null,
+      email: userEntity.email || null
+    });
+    return toEntity(row);
   },
   async update(id, fields) {
-    const assignments = [];
-    const values = [];
-    const add = (column, value) => {
-      if (value !== undefined) {
-        assignments.push(`${column} = ?`);
-        values.push(value);
-      }
-    };
-
-    add("username", fields.username);
-    add("full_name", fields.fullName);
-    add("password", fields.password);
-    add("role", fields.role);
-    if (fields.phone !== undefined) add("phone", fields.phone || null);
-    if (fields.email !== undefined) add("email", fields.email || null);
-    if (assignments.length === 0) return this.findById(id);
-
-    values.push(id);
-    await pool.execute(`UPDATE users SET ${assignments.join(", ")} WHERE id = ?`, values);
+    const values = {};
+    if (fields.username !== undefined) values.username = fields.username;
+    if (fields.fullName !== undefined) values.fullName = fields.fullName;
+    if (fields.password !== undefined) values.password = fields.password;
+    if (fields.role !== undefined) values.role = fields.role;
+    if (fields.phone !== undefined) values.phone = fields.phone || null;
+    if (fields.email !== undefined) values.email = fields.email || null;
+    if (Object.keys(values).length > 0) {
+      await UserModel.update(values, { where: { id } });
+    }
     return this.findById(id);
   },
   async updateProfile(id, fields) {
-    await pool.execute(
-      "UPDATE users SET full_name = ?, phone = ?, email = ? WHERE id = ?",
-      [fields.fullName, fields.phone || null, fields.email || null, id]
+    await UserModel.update(
+      { fullName: fields.fullName, phone: fields.phone || null, email: fields.email || null },
+      { where: { id } }
     );
     return this.findById(id);
   },
   async updatePassword(id, password) {
-    await pool.execute("UPDATE users SET password = ? WHERE id = ?", [password, id]);
+    await UserModel.update({ password }, { where: { id } });
     return this.findById(id);
   },
   async delete(id) {
-    const [result] = await pool.execute("DELETE FROM users WHERE id = ?", [id]);
-    return result.affectedRows > 0;
+    return (await UserModel.destroy({ where: { id } })) > 0;
   }
 };

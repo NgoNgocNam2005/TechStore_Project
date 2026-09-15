@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import "./App.css";
 import LoginPage from "./pages/LoginPage.jsx";
 import AccountPanel from "./pages/AccountPanel.jsx";
+import ReviewPanel from "./pages/ReviewPanel.jsx";
 
 function App() {
   // Auth state
@@ -86,6 +87,7 @@ function App() {
   const [orders, setOrders] = useState([]);
   const [wishlist, setWishlist] = useState([]);
   const [wishlistOpen, setWishlistOpen] = useState(false);
+  const [reviewProduct, setReviewProduct] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [serverOnline, setServerOnline] = useState(false);
 
@@ -652,6 +654,17 @@ function App() {
         />
       )}
 
+      {reviewProduct && (
+        <ReviewPanel
+          product={reviewProduct}
+          currentUser={currentUser}
+          authHeaders={authHeaders}
+          onClose={() => setReviewProduct(null)}
+          onToast={showToast}
+          onSessionExpired={clearSession}
+        />
+      )}
+
       {/* VIEW: KHÁCH HÀNG (CUSTOMER) */}
       {activeRole === "CUSTOMER" && (
         <div>
@@ -707,6 +720,14 @@ function App() {
                     <span className="spec-badge">Bộ nhớ {phone.specs?.storage}</span>
                     <span className="spec-badge">{phone.specs?.color}</span>
                   </div>
+
+                  <button
+                    type="button"
+                    className="review-link"
+                    onClick={() => setReviewProduct(phone)}
+                  >
+                    ⭐ Xem đánh giá sản phẩm
+                  </button>
 
                   <div className="phone-footer">
                     <div>

@@ -1,56 +1,40 @@
-import { pool } from "../config/database.js";
+import { sequelize } from "../config/database.js";
+import { OrderItemModel, OrderModel, ProductModel } from "../models/index.js";
 import { Order } from "../entity/Order.js";
 import { AppError } from "../exception/AppError.js";
 
-const orderColumns = `
-  o.id, o.user_id, o.customer_name, o.phone, o.address,
-  o.total_amount, o.status, o.note, o.created_at,
-  oi.id AS item_id, oi.product_id, oi.product_name,
-  oi.price AS item_price, oi.quantity, oi.sub_total
-`;
-
 const buildOrders = (rows) => {
-  const grouped = new Map();
-
-  for (const row of rows) {
-    if (!grouped.has(row.id)) {
-      grouped.set(row.id, new Order({
-        id: row.id,
-        userId: row.user_id,
-        customerName: row.customer_name,
-        phone: row.phone,
-        address: row.address,
-        totalAmount: Number(row.total_amount),
-        status: row.status,
-        note: row.note,
-        createdAt: row.created_at,
-        items: []
-      }));
-    }
-
-    if (row.item_id !== null) {
-      grouped.get(row.id).items.push({
-        productId: row.product_id,
-        productName: row.product_name,
-        price: Number(row.item_price),
-        quantity: Number(row.quantity),
-        subTotal: Number(row.sub_total)
-      });
-    }
-  }
-
-  return [...grouped.values()];
+  return rows.map((row) => {
+    const data = row.get({ plain: true });
+    return new Order({
+      id: data.id,
+      userId: data.userId,
+      customerName: data.customerName,
+      phone: data.phone,
+      address: data.address,
+      totalAmount: Number(data.totalAmount),
+      status: data.status,
+      note: data.note,
+      createdAt: data.createdAt,
+      items: (data.items || []).map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        price: Number(item.price),
+        quantity: Number(item.quantity),
+        subTotal: Number(item.subTotal)
+      }))
+    });
+  });
 };
 
 const loadOrders = async (where = "", params = []) => {
-  const [rows] = await pool.query(
-    `SELECT ${orderColumns}
-     FROM orders o
-     LEFT JOIN order_items oi ON oi.order_id = o.id
-     ${where}
-     ORDER BY o.id DESC, oi.id ASC`,
-    params
-  );
+  const options = {
+    include: [{ model: OrderItemModel, as: "items", required: false }],
+    order: [["id", "DESC"], [{ model: OrderItemModel, as: "items" }, "id", "ASC"]]
+  };
+  if (where === "WHERE o.user_id = ?") options.where = { userId: params[0] };
+  if (where === "WHERE o.id = ?") options.where = { id: params[0] };
+  const rows = await OrderModel.findAll(options);
   return buildOrders(rows);
 };
 
@@ -78,11 +62,9 @@ export const orderRepository = {
   },
 
   async createWithTransaction({ orderEntity, requestedItems }) {
-    const connection = await pool.getConnection();
+    const transaction = await sequelize.transaction();
 
     try {
-      await connection.beginTransaction();
-
       const quantities = new Map();
       for (const item of requestedItems) {
         const productId = normalizeId(item.productId);
@@ -94,14 +76,10 @@ export const orderRepository = {
       let totalAmount = 0;
 
       for (const [productId, quantity] of quantities) {
-        const [rows] = await connection.execute(
-          `SELECT id, name, price, stock, status
-           FROM products
-           WHERE id = ?
-           FOR UPDATE`,
-          [productId]
-        );
-        const product = rows[0];
+        const product = await ProductModel.findByPk(productId, {
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
 
         if (!product) {
           throw new AppError(`Sản phẩm mã #${productId} không tồn tại`, 404);
@@ -124,56 +102,50 @@ export const orderRepository = {
           subTotal
         });
 
-        await connection.execute(
-          `UPDATE products
-           SET stock = stock - ?,
-               status = CASE WHEN stock - ? <= 0 THEN 'OUT_OF_STOCK' ELSE 'ACTIVE' END
-           WHERE id = ?`,
-          [quantity, quantity, productId]
-        );
+        await product.update({
+          stock: Number(product.stock) - quantity,
+          status: Number(product.stock) - quantity <= 0 ? "OUT_OF_STOCK" : "ACTIVE"
+        }, { transaction });
       }
 
-      const [orderResult] = await connection.execute(
-        `INSERT INTO orders
-          (user_id, customer_name, phone, address, total_amount, status, note)
-         VALUES (?, ?, ?, ?, ?, 'PENDING', ?)`,
-        [
-          orderEntity.userId,
-          orderEntity.customerName,
-          orderEntity.phone,
-          orderEntity.address,
-          totalAmount,
-          orderEntity.note || null
-        ]
+      const order = await OrderModel.create({
+        userId: orderEntity.userId,
+        customerName: orderEntity.customerName,
+        phone: orderEntity.phone,
+        address: orderEntity.address,
+        totalAmount,
+        status: "PENDING",
+        note: orderEntity.note || null
+      }, { transaction });
+
+      await OrderItemModel.bulkCreate(
+        processedItems.map((item) => ({
+          orderId: order.id,
+          productId: item.productId,
+          productName: item.productName,
+          price: item.price,
+          quantity: item.quantity,
+          subTotal: item.subTotal
+        })),
+        { transaction }
       );
 
-      for (const item of processedItems) {
-        await connection.execute(
-          `INSERT INTO order_items
-            (order_id, product_id, product_name, price, quantity, sub_total)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [orderResult.insertId, item.productId, item.productName, item.price, item.quantity, item.subTotal]
-        );
-      }
-
-      await connection.commit();
-      return this.findById(orderResult.insertId);
+      await transaction.commit();
+      return this.findById(order.id);
     } catch (error) {
-      await connection.rollback();
+      await transaction.rollback();
       throw error;
-    } finally {
-      connection.release();
     }
   },
 
   async updateStatus(id, newStatus) {
     const orderId = normalizeId(id);
     if (!orderId) return null;
-    const [result] = await pool.execute(
-      "UPDATE orders SET status = ? WHERE id = ?",
-      [newStatus, orderId]
+    const [affected] = await OrderModel.update(
+      { status: newStatus },
+      { where: { id: orderId } }
     );
-    if (result.affectedRows === 0) return null;
+    if (affected === 0) return null;
     return this.findById(orderId);
   },
 
@@ -181,44 +153,49 @@ export const orderRepository = {
     const orderId = normalizeId(id);
     const normalizedUserId = normalizeId(userId);
     if (!orderId || (userId !== null && !normalizedUserId)) return null;
-    const connection = await pool.getConnection();
+    const transaction = await sequelize.transaction();
 
     try {
-      await connection.beginTransaction();
-      const ownershipClause = normalizedUserId ? " AND user_id = ?" : "";
-      const ownershipParams = normalizedUserId ? [orderId, normalizedUserId] : [orderId];
-      const [orderRows] = await connection.execute(
-        `SELECT id, status FROM orders WHERE id = ?${ownershipClause} FOR UPDATE`,
-        ownershipParams
-      );
-      const order = orderRows[0];
+      const where = normalizedUserId
+        ? { id: orderId, userId: normalizedUserId }
+        : { id: orderId };
+      const order = await OrderModel.findOne({
+        where,
+        attributes: ["id", "status"],
+        include: [{
+          model: OrderItemModel,
+          as: "items",
+          attributes: ["productId", "quantity"]
+        }],
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
       if (!order) throw new AppError("Không tìm thấy đơn hàng hoặc bạn không có quyền", 404);
       if (order.status !== "PENDING") {
         throw new AppError("Chỉ có thể hủy đơn hàng đang chờ duyệt", 400);
       }
 
-      const [items] = await connection.execute(
-        "SELECT product_id, quantity FROM order_items WHERE order_id = ?",
-        [orderId]
-      );
-      for (const item of items) {
-        if (item.product_id === null) continue;
-        await connection.execute(
-          `UPDATE products
-           SET stock = stock + ?, status = 'ACTIVE'
-           WHERE id = ?`,
-          [item.quantity, item.product_id]
+      for (const item of order.items || []) {
+        if (item.productId === null) continue;
+        await ProductModel.increment(
+          { stock: item.quantity },
+          { where: { id: item.productId }, transaction }
+        );
+        await ProductModel.update(
+          { status: "ACTIVE" },
+          { where: { id: item.productId }, transaction }
         );
       }
 
-      await connection.execute("UPDATE orders SET status = 'CANCELLED' WHERE id = ?", [orderId]);
-      await connection.commit();
+      await OrderModel.update(
+        { status: "CANCELLED" },
+        { where: { id: orderId }, transaction }
+      );
+      await transaction.commit();
       return this.findById(orderId);
     } catch (error) {
-      await connection.rollback();
+      await transaction.rollback();
       throw error;
-    } finally {
-      connection.release();
     }
   }
 };

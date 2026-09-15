@@ -1,6 +1,6 @@
 import { wishlistService } from "../service/wishlistService.js";
 
-export const wistlistController = {
+export const wishlistController = {
     async getMine(req, res, next) {
         try {
             const data = await wishlistService.getMine(req.user.id);

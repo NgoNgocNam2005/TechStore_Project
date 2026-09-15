@@ -3,21 +3,16 @@ import { AppError } from "../../exception/AppError.js";
 const phonePattern = /^[0-9+().\-\s]{8,20}$/;
 
 export class UpdateProfileDTO {
-  constructor(body) {
+  constructor(body){
     this.fullName = body.fullName?.trim();
     this.phone = body.phone?.trim();
     this.email = body.email?.trim();
   }
-
   validate() {
     if (!this.fullName) throw new AppError("Họ và tên không được để trống", 400);
     if (this.fullName.length > 100) throw new AppError("Họ và tên không được quá 100 ký tự", 400);
-    if (this.phone && !phonePattern.test(this.phone)) {
-      throw new AppError("Số điện thoại không hợp lệ", 400);
-    }
-    if (this.email && !/^\S+@\S+\.\S+$/.test(this.email)) {
-      throw new AppError("Email không hợp lệ", 400);
-    }
+    if (this.phone && !phonePattern.test(this.phone)) throw new AppError("Số điện thoại không hợp lệ", 400);
+    if (this.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.email)) throw new AppError("Email không hợp lệ", 400);
   }
 }
 
