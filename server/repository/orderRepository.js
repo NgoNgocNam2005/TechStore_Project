@@ -1,7 +1,8 @@
 import { sequelize } from "../config/database.js";
-import { InvoiceDetailModel, InvoiceModel, ProductModel } from "../models/index.js";
-import { invoiceDetailRepository } from "./invoiceDetailRepository.js";
+import { OrderDetailModel, OrderModel, ProductModel } from "../models/index.js";
+import { orderDetailRepository } from "./orderDetailRepository.js";
 import { Order } from "../entity/Order.js";
+import { OrderDetail } from "../entity/OrderDetail.js";
 import { AppError } from "../exception/AppError.js";
 
 const buildOrders = (rows) => {
@@ -17,14 +18,14 @@ const buildOrders = (rows) => {
       status: data.status,
       note: data.note,
       createdAt: data.createdAt,
-      items: (data.details || []).map((item) => ({
+      items: (data.details || []).map((item) => new OrderDetail({
         id: item.id,
+        orderId: item.orderId,
         productId: item.productId,
         productName: item.productName,
-        price: Number(item.unitPrice),
-        unitPrice: Number(item.unitPrice),
-        quantity: Number(item.quantity),
-        subTotal: Number(item.subTotal),
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        subTotal: item.subTotal,
         product: item.product
           ? {
               id: item.product.id,
@@ -40,7 +41,7 @@ const buildOrders = (rows) => {
 const loadOrders = async (where = "", params = []) => {
   const options = {
     include: [{
-      model: InvoiceDetailModel,
+      model: OrderDetailModel,
       as: "details",
       required: false,
       include: [{
@@ -50,11 +51,11 @@ const loadOrders = async (where = "", params = []) => {
         required: false,
       }],
     }],
-    order: [["id", "DESC"], [{ model: InvoiceDetailModel, as: "details" }, "id", "ASC"]]
+    order: [["id", "DESC"], [{ model: OrderDetailModel, as: "details" }, "id", "ASC"]]
   };
   if (where === "WHERE o.user_id = ?") options.where = { userId: params[0] };
   if (where === "WHERE o.id = ?") options.where = { id: params[0] };
-  const rows = await InvoiceModel.findAll(options);
+  const rows = await OrderModel.findAll(options);
   return buildOrders(rows);
 };
 
@@ -128,7 +129,7 @@ export const orderRepository = {
         }, { transaction });
       }
 
-      const order = await InvoiceModel.create({
+      const order = await OrderModel.create({
         userId: orderEntity.userId,
         customerName: orderEntity.customerName,
         phone: orderEntity.phone,
@@ -138,9 +139,9 @@ export const orderRepository = {
         note: orderEntity.note || null
       }, { transaction });
 
-      await invoiceDetailRepository.createMany(
+      await orderDetailRepository.createMany(
         processedItems.map((item) => ({
-          invoiceId: order.id,
+          orderId: order.id,
           productId: item.productId,
           productName: item.productName,
           unitPrice: item.price,
@@ -161,7 +162,7 @@ export const orderRepository = {
   async updateStatus(id, newStatus) {
     const orderId = normalizeId(id);
     if (!orderId) return null;
-    const [affected] = await InvoiceModel.update(
+    const [affected] = await OrderModel.update(
       { status: newStatus },
       { where: { id: orderId } }
     );
@@ -179,11 +180,11 @@ export const orderRepository = {
       const where = normalizedUserId
         ? { id: orderId, userId: normalizedUserId }
         : { id: orderId };
-      const order = await InvoiceModel.findOne({
+      const order = await OrderModel.findOne({
         where,
         attributes: ["id", "status"],
         include: [{
-          model: InvoiceDetailModel,
+          model: OrderDetailModel,
           as: "details",
           attributes: ["productId", "quantity"]
         }],
@@ -207,7 +208,7 @@ export const orderRepository = {
         );
       }
 
-      await InvoiceModel.update(
+      await OrderModel.update(
         { status: "CANCELLED" },
         { where: { id: orderId }, transaction }
       );

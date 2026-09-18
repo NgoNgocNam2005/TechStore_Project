@@ -164,9 +164,7 @@ function App() {
     setOrderDetailsLoading(true);
 
     try {
-      const detailsUrl = activeRole === "CUSTOMER"
-        ? `/api/invoices/${orderId}`
-        : `/api/orders/${orderId}`;
+      const detailsUrl = `/api/orders/${orderId}`;
       let response = await fetch(detailsUrl, {
         headers: authHeaders(),
       });
@@ -343,7 +341,7 @@ function App() {
       }
 
       // Đơn hàng
-      const orderPath = activeRole === "CUSTOMER" ? "/api/invoices/my" : "/api/orders";
+      const orderPath = activeRole === "CUSTOMER" ? "/api/orders/my" : "/api/orders";
       const orderRes = await fetch(orderPath, { headers: authHeaders() });
       if (orderRes.status === 401) {
         if (await refreshSession()) return;

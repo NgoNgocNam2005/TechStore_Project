@@ -73,18 +73,14 @@ const run = async () => {
     if (orderDetails.data.items.length !== 2) {
       throw new Error("Customer order details did not return all line items");
     }
-
-    const myInvoices = await request("/invoices/my", { headers: auth });
-    const createdInvoice = myInvoices.data.find(
-      (invoice) => Number(invoice.id) === Number(created.data.id)
+    const myOrders = await request("/orders/my", { headers: auth });
+    const createdOrderInList = myOrders.data.find(
+      (order) => Number(order.id) === Number(created.data.id)
     );
-    if (!createdInvoice || createdInvoice.details.length !== 2) {
-      throw new Error("Customer invoice list did not include the new multi-item invoice");
+    if (!createdOrderInList || createdOrderInList.items.length !== 2) {
+      throw new Error("Customer order list did not include the new multi-item order");
     }
-    const invoiceDetails = await request(`/invoices/${created.data.id}`, { headers: auth });
-    if (invoiceDetails.data.details.length !== 2) {
-      throw new Error("Invoice detail endpoint did not return all line items");
-    }
+
 
     const productAfterOrder = (await request("/products/1")).data;
     if (productAfterOrder.stock !== productBefore.stock - 1) {

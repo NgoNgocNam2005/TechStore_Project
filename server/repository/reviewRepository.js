@@ -1,6 +1,6 @@
 import {
-  InvoiceDetailModel,
-  InvoiceModel,
+  OrderDetailModel,
+  OrderModel,
   ProductReviewModel,
   UserModel,
 } from "../models/index.js";
@@ -74,18 +74,18 @@ export const reviewRepository = {
     const normalizedProductId = normalizeId(productId);
     if (!normalizedUserId || !normalizedProductId) return false;
 
-    const invoice = await InvoiceModel.findOne({
+    const order = await OrderModel.findOne({
       attributes: ["id"],
       where: { userId: normalizedUserId, status: "DELIVERED" },
       include: [{
-        model: InvoiceDetailModel,
+        model: OrderDetailModel,
         as: "details",
         attributes: ["id"],
         where: { productId: normalizedProductId },
         required: true
       }]
     });
-    return Boolean(invoice);
+    return Boolean(order);
   },
 
   async create(userId, productId, fields) {

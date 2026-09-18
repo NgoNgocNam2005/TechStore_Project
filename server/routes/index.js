@@ -4,7 +4,6 @@ import orderRoute from "./orderRoute.js";
 import userRoute from "./userRoute.js";
 import authRoute from "./authRoute.js";
 import reviewRoute from "./reviewRoute.js";
-import invoiceRoute from "./invoiceRoute.js";
 import { appConfig } from "../config/appConfig.js";
 
 const rootRouter = express.Router();
@@ -24,7 +23,6 @@ rootRouter.get("/status", (req, res) => {
 rootRouter.use("/auth", authRoute);
 rootRouter.use("/products", productRoute);
 rootRouter.use("/orders", orderRoute);
-rootRouter.use("/invoices", invoiceRoute);
 rootRouter.use("/users", userRoute);
 
 // reviewRoute đã chứa sẵn /products/... và /reviews/...

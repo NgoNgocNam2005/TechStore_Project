@@ -60,7 +60,7 @@ export const WishlistModel = sequelize.define("Wishlist", {
   createdAt: { type: DataTypes.DATE, field: "created_at" },
 }, { tableName: "wishlists", ...common });
 
-export const InvoiceModel = sequelize.define("Invoice", {
+export const OrderModel = sequelize.define("Order", {
   id: {
     type: DataTypes.BIGINT,
     primaryKey: true,
@@ -111,13 +111,13 @@ export const InvoiceModel = sequelize.define("Invoice", {
 });
 
 
-export const InvoiceDetailModel = sequelize.define("InvoiceDetail", {
+export const OrderDetailModel = sequelize.define("OrderDetail", {
   id: {
     type: DataTypes.BIGINT,
     primaryKey: true,
     autoIncrement: true,
   },
-  invoiceId: {
+  orderId: {
     type: DataTypes.BIGINT,
     allowNull: false,
     field: "order_id",
@@ -153,25 +153,25 @@ export const InvoiceDetailModel = sequelize.define("InvoiceDetail", {
 });
 
 // Một hóa đơn có nhiều dòng hàng
-InvoiceModel.hasMany(InvoiceDetailModel, {
-  foreignKey: "invoiceId",
+OrderModel.hasMany(OrderDetailModel, {
+  foreignKey: "orderId",
   as: "details",
 });
 
 // Mỗi dòng hàng thuộc về một hóa đơn và tham chiếu một sản phẩm
-InvoiceDetailModel.belongsTo(InvoiceModel, {
-  foreignKey: "invoiceId",
-  as: "invoice",
+OrderDetailModel.belongsTo(OrderModel, {
+  foreignKey: "orderId",
+  as: "order",
 });
 
-InvoiceDetailModel.belongsTo(ProductModel, {
+OrderDetailModel.belongsTo(ProductModel, {
   foreignKey: "productId",
   as: "product",
 });
 
-ProductModel.hasMany(InvoiceDetailModel, {
+ProductModel.hasMany(OrderDetailModel, {
   foreignKey: "productId",
-  as: "invoiceDetails",
+  as: "orderDetails",
 });
 
 export const ProductReviewModel = sequelize.define("ProductReview", {
@@ -185,8 +185,8 @@ export const ProductReviewModel = sequelize.define("ProductReview", {
 }, { tableName: "product_reviews", ...common });
 
 UserModel.hasMany(AddressModel, { foreignKey: "userId", as: "addresses" });
-UserModel.hasMany(InvoiceModel, { foreignKey: "userId", as: "invoices" });
-InvoiceModel.belongsTo(UserModel, { foreignKey: "userId", as: "user" });
+UserModel.hasMany(OrderModel, { foreignKey: "userId", as: "orders" });
+OrderModel.belongsTo(UserModel, { foreignKey: "userId", as: "user" });
 UserModel.hasMany(ProductReviewModel, { foreignKey: "userId", as: "reviews" });
 UserModel.hasMany(RefreshTokenModel, { foreignKey: "userId", as: "refreshTokens" });
 ProductModel.hasMany(WishlistModel, { foreignKey: "productId", as: "wishlists" });
