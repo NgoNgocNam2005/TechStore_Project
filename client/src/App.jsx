@@ -119,7 +119,8 @@ function App() {
     customerName: "",
     phone: "",
     address: "",
-    note: ""
+    note: "",
+    paymentMethod: "COD"
   });
 
   // Tab của Admin
@@ -464,6 +465,7 @@ function App() {
         phone: orderForm.phone,
         address: orderForm.address,
         note: orderForm.note,
+        paymentMethod: orderForm.paymentMethod,
         items: selectedCartItems.map(item => ({
           productId: item.productId,
           quantity: item.quantity
@@ -490,7 +492,13 @@ function App() {
         [...current].filter((id) => !orderedIds.has(id))
       ));
       setCheckoutOpen(false);
-      setOrderForm({ customerName: "", phone: "", address: "", note: "" });
+      setOrderForm({
+        customerName: "",
+        phone: "",
+        address: "",
+        note: "",
+        paymentMethod: "COD",
+      });
 
       // Cập nhật lại kho và danh sách đơn
       loadData();
@@ -867,6 +875,13 @@ function App() {
                 </div>
                 <div className="phone-content">
                   <h3 className="phone-title">{phone.name}</h3>
+                  <button
+                    type="button"
+                    className="product-info-link"
+                    onClick={() => openProductDetails(phone.id)}
+                  >
+                    Xem chi tiết sản phẩm
+                  </button>
 
                   <div className="specs-tags">
                     <span className="spec-badge">RAM {phone.specs?.ram}</span>
@@ -1057,6 +1072,12 @@ function App() {
                   <span className={`status-badge ${order.status}`}>
                     ● {order.statusText}
                   </span>
+                  <div className="order-payment-summary">
+                    <span>{order.paymentMethodText || "Thanh toán khi nhận hàng"}</span>
+                    <span className={order.paymentStatus === "PAID" ? "paid" : "unpaid"}>
+                      {order.paymentStatusText || "Chưa thanh toán"}
+                    </span>
+                  </div>
                   <button
                     className="order-detail-btn"
                     onClick={() => openOrderDetails(order.id)}
@@ -1572,6 +1593,26 @@ function App() {
                   onChange={e => setOrderForm({ ...orderForm, address: e.target.value })}
                   required
                 />
+              </div>
+
+              <div className="form-group">
+                <label>Phương thức thanh toán:</label>
+                <label className="payment-option">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="COD"
+                    checked={orderForm.paymentMethod === "COD"}
+                    onChange={(event) => setOrderForm((form) => ({
+                      ...form,
+                      paymentMethod: event.target.value,
+                    }))}
+                  />
+                  <span>
+                    <strong>Thanh toán khi nhận hàng (COD)</strong>
+                    <small>Thanh toán cho nhân viên giao hàng khi nhận sản phẩm.</small>
+                  </span>
+                </label>
               </div>
 
               <div className="form-group">

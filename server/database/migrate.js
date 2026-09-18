@@ -66,6 +66,28 @@ const run = async () => {
       console.log("Đã bổ sung trạng thái DELIVERED cho orders.status.");
     }
 
+    const paymentMethodColumns = await sequelize.query(
+      "SHOW COLUMNS FROM orders LIKE 'payment_method'",
+      { type: QueryTypes.SELECT }
+    );
+    if (paymentMethodColumns.length === 0) {
+      await sequelize.query(
+        "ALTER TABLE orders ADD COLUMN payment_method VARCHAR(30) NOT NULL DEFAULT 'COD' AFTER status"
+      );
+      console.log("Đã bổ sung orders.payment_method.");
+    }
+
+    const paymentStatusColumns = await sequelize.query(
+      "SHOW COLUMNS FROM orders LIKE 'payment_status'",
+      { type: QueryTypes.SELECT }
+    );
+    if (paymentStatusColumns.length === 0) {
+      await sequelize.query(
+        "ALTER TABLE orders ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'UNPAID' AFTER payment_method"
+      );
+      console.log("Đã bổ sung orders.payment_status.");
+    }
+
     if (columns.length === 0) {
       await sequelize.query("ALTER TABLE orders ADD COLUMN user_id BIGINT NULL AFTER id");
 

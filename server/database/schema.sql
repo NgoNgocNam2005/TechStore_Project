@@ -97,6 +97,8 @@ CREATE TABLE orders (
     address TEXT NOT NULL,
     total_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
     status ENUM('PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
+    payment_method VARCHAR(30) NOT NULL DEFAULT 'COD',
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'UNPAID',
     note TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_order_status (status),

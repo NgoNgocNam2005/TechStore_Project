@@ -12,6 +12,10 @@ export class OrderResponseDTO {
     this.statusText = this._getStatusText(order.status);
     this.note = order.note;
     this.createdAt = new Date(order.createdAt).toLocaleString("vi-VN");
+    this.paymentMethod = order.paymentMethod;
+    this.paymentMethodText = order.paymentMethod === "COD" ? "Thanh toán khi nhận hàng" : order.paymentMethod;
+    this.paymentStatus = order.paymentStatus;
+    this.paymentStatusText = order.paymentStatus === "PAID" ? "Đã thanh toán" : "Chưa thanh toán";
   }
 
   _getStatusText(status) {

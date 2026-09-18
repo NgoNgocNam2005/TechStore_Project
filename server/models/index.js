@@ -99,6 +99,18 @@ export const OrderModel = sequelize.define("Order", {
     ),
     allowNull: false,
   },
+  paymentMethod: {
+    type: DataTypes.STRING(30),
+    allowNull: false,
+    defaultValue: "COD",
+    field: "payment_method",
+  },
+  paymentStatus: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: "UNPAID",
+    field: "payment_status",
+  },
   note: DataTypes.TEXT,
   createdAt: {
     type: DataTypes.DATE,

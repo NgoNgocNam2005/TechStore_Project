@@ -43,6 +43,16 @@ export default function OrderDetailsPanel({
               <div><span>Ngày đặt</span><strong>{order.createdAt}</strong></div>
               <div><span>Người nhận</span><strong>{order.customerName}</strong></div>
               <div><span>Số điện thoại</span><strong>{order.phone}</strong></div>
+              <div>
+                <span>Phương thức thanh toán</span>
+                <strong>{order.paymentMethodText || "Thanh toán khi nhận hàng"}</strong>
+              </div>
+              <div>
+                <span>Trạng thái thanh toán</span>
+                <strong className={order.paymentStatus === "PAID" ? "payment-paid" : "payment-unpaid"}>
+                  {order.paymentStatusText || "Chưa thanh toán"}
+                </strong>
+              </div>
               <div className="order-details-address"><span>Địa chỉ giao hàng</span><strong>{order.address}</strong></div>
               {order.note && <div className="order-details-address"><span>Ghi chú</span><strong>{order.note}</strong></div>}
             </div>
