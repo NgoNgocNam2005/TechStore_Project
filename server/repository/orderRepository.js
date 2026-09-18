@@ -1,5 +1,6 @@
 import { sequelize } from "../config/database.js";
-import { OrderItemModel, OrderModel, ProductModel } from "../models/index.js";
+import { InvoiceDetailModel, InvoiceModel, ProductModel } from "../models/index.js";
+import { invoiceDetailRepository } from "./invoiceDetailRepository.js";
 import { Order } from "../entity/Order.js";
 import { AppError } from "../exception/AppError.js";
 
@@ -16,12 +17,21 @@ const buildOrders = (rows) => {
       status: data.status,
       note: data.note,
       createdAt: data.createdAt,
-      items: (data.items || []).map((item) => ({
+      items: (data.details || []).map((item) => ({
+        id: item.id,
         productId: item.productId,
         productName: item.productName,
-        price: Number(item.price),
+        price: Number(item.unitPrice),
+        unitPrice: Number(item.unitPrice),
         quantity: Number(item.quantity),
-        subTotal: Number(item.subTotal)
+        subTotal: Number(item.subTotal),
+        product: item.product
+          ? {
+              id: item.product.id,
+              name: item.product.name,
+              imageUrl: item.product.imageUrl,
+            }
+          : null,
       }))
     });
   });
@@ -29,12 +39,22 @@ const buildOrders = (rows) => {
 
 const loadOrders = async (where = "", params = []) => {
   const options = {
-    include: [{ model: OrderItemModel, as: "items", required: false }],
-    order: [["id", "DESC"], [{ model: OrderItemModel, as: "items" }, "id", "ASC"]]
+    include: [{
+      model: InvoiceDetailModel,
+      as: "details",
+      required: false,
+      include: [{
+        model: ProductModel,
+        as: "product",
+        attributes: ["id", "name", "imageUrl"],
+        required: false,
+      }],
+    }],
+    order: [["id", "DESC"], [{ model: InvoiceDetailModel, as: "details" }, "id", "ASC"]]
   };
   if (where === "WHERE o.user_id = ?") options.where = { userId: params[0] };
   if (where === "WHERE o.id = ?") options.where = { id: params[0] };
-  const rows = await OrderModel.findAll(options);
+  const rows = await InvoiceModel.findAll(options);
   return buildOrders(rows);
 };
 
@@ -108,7 +128,7 @@ export const orderRepository = {
         }, { transaction });
       }
 
-      const order = await OrderModel.create({
+      const order = await InvoiceModel.create({
         userId: orderEntity.userId,
         customerName: orderEntity.customerName,
         phone: orderEntity.phone,
@@ -118,12 +138,12 @@ export const orderRepository = {
         note: orderEntity.note || null
       }, { transaction });
 
-      await OrderItemModel.bulkCreate(
+      await invoiceDetailRepository.createMany(
         processedItems.map((item) => ({
-          orderId: order.id,
+          invoiceId: order.id,
           productId: item.productId,
           productName: item.productName,
-          price: item.price,
+          unitPrice: item.price,
           quantity: item.quantity,
           subTotal: item.subTotal
         })),
@@ -141,7 +161,7 @@ export const orderRepository = {
   async updateStatus(id, newStatus) {
     const orderId = normalizeId(id);
     if (!orderId) return null;
-    const [affected] = await OrderModel.update(
+    const [affected] = await InvoiceModel.update(
       { status: newStatus },
       { where: { id: orderId } }
     );
@@ -159,12 +179,12 @@ export const orderRepository = {
       const where = normalizedUserId
         ? { id: orderId, userId: normalizedUserId }
         : { id: orderId };
-      const order = await OrderModel.findOne({
+      const order = await InvoiceModel.findOne({
         where,
         attributes: ["id", "status"],
         include: [{
-          model: OrderItemModel,
-          as: "items",
+          model: InvoiceDetailModel,
+          as: "details",
           attributes: ["productId", "quantity"]
         }],
         transaction,
@@ -175,7 +195,7 @@ export const orderRepository = {
         throw new AppError("Chỉ có thể hủy đơn hàng đang chờ duyệt", 400);
       }
 
-      for (const item of order.items || []) {
+      for (const item of order.details || []) {
         if (item.productId === null) continue;
         await ProductModel.increment(
           { stock: item.quantity },
@@ -187,7 +207,7 @@ export const orderRepository = {
         );
       }
 
-      await OrderModel.update(
+      await InvoiceModel.update(
         { status: "CANCELLED" },
         { where: { id: orderId }, transaction }
       );

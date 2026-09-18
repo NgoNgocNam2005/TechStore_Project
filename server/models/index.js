@@ -60,27 +60,119 @@ export const WishlistModel = sequelize.define("Wishlist", {
   createdAt: { type: DataTypes.DATE, field: "created_at" },
 }, { tableName: "wishlists", ...common });
 
-export const OrderModel = sequelize.define("Order", {
-  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
-  userId: { type: DataTypes.BIGINT, allowNull: false, field: "user_id" },
-  customerName: { type: DataTypes.STRING(100), allowNull: false, field: "customer_name" },
-  phone: { type: DataTypes.STRING(20), allowNull: false },
-  address: { type: DataTypes.TEXT, allowNull: false },
-  totalAmount: { type: DataTypes.DECIMAL(15, 2), allowNull: false, field: "total_amount" },
-  status: { type: DataTypes.ENUM("PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"), allowNull: false },
+export const InvoiceModel = sequelize.define("Invoice", {
+  id: {
+    type: DataTypes.BIGINT,
+    primaryKey: true,
+    autoIncrement: true,
+  },
+  userId: {
+    type: DataTypes.BIGINT,
+    allowNull: false,
+    field: "user_id",
+  },
+  customerName: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    field: "customer_name",
+  },
+  phone: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+  },
+  address: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+  },
+  totalAmount: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: false,
+    field: "total_amount",
+  },
+  status: {
+    type: DataTypes.ENUM(
+      "PENDING",
+      "CONFIRMED",
+      "SHIPPED",
+      "DELIVERED",
+      "CANCELLED"
+    ),
+    allowNull: false,
+  },
   note: DataTypes.TEXT,
-  createdAt: { type: DataTypes.DATE, field: "created_at" },
-}, { tableName: "orders", ...common });
+  createdAt: {
+    type: DataTypes.DATE,
+    field: "created_at",
+  },
+}, {
+  tableName: "orders",
+  timestamps: false,
+  freezeTableName: true,
+});
 
-export const OrderItemModel = sequelize.define("OrderItem", {
-  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
-  orderId: { type: DataTypes.BIGINT, allowNull: false, field: "order_id" },
-  productId: { type: DataTypes.BIGINT, field: "product_id" },
-  productName: { type: DataTypes.STRING(255), allowNull: false, field: "product_name" },
-  price: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
-  quantity: { type: DataTypes.INTEGER, allowNull: false },
-  subTotal: { type: DataTypes.DECIMAL(15, 2), allowNull: false, field: "sub_total" },
-}, { tableName: "order_items", ...common });
+
+export const InvoiceDetailModel = sequelize.define("InvoiceDetail", {
+  id: {
+    type: DataTypes.BIGINT,
+    primaryKey: true,
+    autoIncrement: true,
+  },
+  invoiceId: {
+    type: DataTypes.BIGINT,
+    allowNull: false,
+    field: "order_id",
+  },
+  productId: {
+    type: DataTypes.BIGINT,
+    allowNull: true,
+    field: "product_id",
+  },
+  productName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    field: "product_name",
+  },
+  unitPrice: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: false,
+    field: "price",
+  },
+  quantity: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  subTotal: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: false,
+    field: "sub_total",
+  },
+}, {
+  tableName: "order_items",
+  timestamps: false,
+  freezeTableName: true,
+});
+
+// Một hóa đơn có nhiều dòng hàng
+InvoiceModel.hasMany(InvoiceDetailModel, {
+  foreignKey: "invoiceId",
+  as: "details",
+});
+
+// Mỗi dòng hàng thuộc về một hóa đơn và tham chiếu một sản phẩm
+InvoiceDetailModel.belongsTo(InvoiceModel, {
+  foreignKey: "invoiceId",
+  as: "invoice",
+});
+
+InvoiceDetailModel.belongsTo(ProductModel, {
+  foreignKey: "productId",
+  as: "product",
+});
+
+ProductModel.hasMany(InvoiceDetailModel, {
+  foreignKey: "productId",
+  as: "invoiceDetails",
+});
 
 export const ProductReviewModel = sequelize.define("ProductReview", {
   id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
@@ -93,13 +185,12 @@ export const ProductReviewModel = sequelize.define("ProductReview", {
 }, { tableName: "product_reviews", ...common });
 
 UserModel.hasMany(AddressModel, { foreignKey: "userId", as: "addresses" });
-UserModel.hasMany(OrderModel, { foreignKey: "userId", as: "orders" });
+UserModel.hasMany(InvoiceModel, { foreignKey: "userId", as: "invoices" });
+InvoiceModel.belongsTo(UserModel, { foreignKey: "userId", as: "user" });
 UserModel.hasMany(ProductReviewModel, { foreignKey: "userId", as: "reviews" });
 UserModel.hasMany(RefreshTokenModel, { foreignKey: "userId", as: "refreshTokens" });
 ProductModel.hasMany(WishlistModel, { foreignKey: "productId", as: "wishlists" });
-ProductModel.hasMany(OrderItemModel, { foreignKey: "productId", as: "orderItems" });
 ProductModel.hasMany(ProductReviewModel, { foreignKey: "productId", as: "reviews" });
-OrderModel.hasMany(OrderItemModel, { foreignKey: "orderId", as: "items" });
-OrderItemModel.belongsTo(OrderModel, { foreignKey: "orderId" });
 WishlistModel.belongsTo(ProductModel, { foreignKey: "productId", as: "product" });
 ProductReviewModel.belongsTo(UserModel, { foreignKey: "userId", as: "user" });
+ProductReviewModel.belongsTo(ProductModel, { foreignKey: "productId", as: "product" });

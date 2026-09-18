@@ -1,5 +1,10 @@
-import { OrderItemModel, OrderModel, ProductReviewModel, UserModel } from "../models/index.js";
-import {ProductReview} from "../entity/ProductReview.js";
+import {
+  InvoiceDetailModel,
+  InvoiceModel,
+  ProductReviewModel,
+  UserModel,
+} from "../models/index.js";
+import { ProductReview } from "../entity/ProductReview.js";
 
 const normalizeId = (id) => {
   const value = Number(id);
@@ -65,18 +70,22 @@ export const reviewRepository = {
   },
 
   async hasDeliveredProduct(userId, productId) {
-    const order = await OrderModel.findOne({
+    const normalizedUserId = normalizeId(userId);
+    const normalizedProductId = normalizeId(productId);
+    if (!normalizedUserId || !normalizedProductId) return false;
+
+    const invoice = await InvoiceModel.findOne({
       attributes: ["id"],
-      where: { userId, status: "DELIVERED" },
+      where: { userId: normalizedUserId, status: "DELIVERED" },
       include: [{
-        model: OrderItemModel,
-        as: "items",
+        model: InvoiceDetailModel,
+        as: "details",
         attributes: ["id"],
-        where: { productId },
+        where: { productId: normalizedProductId },
         required: true
       }]
     });
-    return Boolean(order);
+    return Boolean(invoice);
   },
 
   async create(userId, productId, fields) {

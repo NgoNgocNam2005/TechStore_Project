@@ -11,6 +11,7 @@ export default function ReviewPanel({
   const [reviews, setReviews] = useState([]);
   const [form, setForm] = useState({ rating: 5, comment: "" });
   const [loading, setLoading] = useState(false);
+  const [editingReview, setEditingReview] = useState(null); // { id, rating, comment }
 
   const loadReviews = async () => {
     const response = await fetch(
@@ -94,6 +95,43 @@ export default function ReviewPanel({
     }
   };
 
+  const updateReview = async event => {
+    event.preventDefault();
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/reviews/${editingReview.id}`,
+        {
+          method: "PATCH",
+          headers: authHeaders(true),
+          body: JSON.stringify({ rating: editingReview.rating, comment: editingReview.comment })
+        }
+      );
+
+      const result = await response.json().catch(() => ({}));
+
+      if (response.status === 401) {
+        onSessionExpired();
+        throw new Error("Phiên đăng nhập đã hết hạn");
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || "Không thể cập nhật đánh giá");
+      }
+
+      setReviews(items =>
+        items.map(item => item.id === editingReview.id ? result.data : item)
+      );
+      setEditingReview(null);
+      onToast("Đã cập nhật đánh giá");
+    } catch (error) {
+      onToast(error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const ownReview = reviews.find(
     review => Number(review.userId) === Number(currentUser.id)
   );
@@ -160,9 +198,57 @@ export default function ReviewPanel({
                 <div className="review-stars">{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
                 {review.comment && <p>{review.comment}</p>}
                 {Number(review.userId) === Number(currentUser.id) && (
-                  <button className="btn-danger" onClick={() => deleteReview(review.id)}>
-                    Xóa đánh giá
-                  </button>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    {editingReview?.id === review.id ? (
+                      <form onSubmit={updateReview} style={{ width: "100%" }}>
+                        <div className="star-picker" role="radiogroup" aria-label="Số sao">
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <button
+                              key={star}
+                              type="button"
+                              className={star <= editingReview.rating ? "selected" : ""}
+                              onClick={() => setEditingReview(prev => ({ ...prev, rating: star }))}
+                              aria-label={`${star} sao`}
+                            >
+                              ★
+                            </button>
+                          ))}
+                        </div>
+                        <textarea
+                          className="review-textarea"
+                          value={editingReview.comment}
+                          onChange={e => setEditingReview(prev => ({ ...prev, comment: e.target.value }))}
+                          maxLength={1000}
+                          rows={3}
+                        />
+                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                          <button className="btn-primary" disabled={loading}>
+                            {loading ? "Đang lưu..." : "Lưu"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-danger"
+                            onClick={() => setEditingReview(null)}
+                          >
+                            Hủy
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        className="btn-primary"
+                        style={{ padding: "4px 12px" }}
+                        onClick={() => setEditingReview({ id: review.id, rating: review.rating, comment: review.comment || "" })}
+                      >
+                        ✏️ Sửa
+                      </button>
+                    )}
+                    {editingReview?.id !== review.id && (
+                      <button className="btn-danger" onClick={() => deleteReview(review.id)}>
+                        Xóa
+                      </button>
+                    )}
+                  </div>
                 )}
               </article>
             ))

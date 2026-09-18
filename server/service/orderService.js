@@ -41,7 +41,7 @@ export const orderService = {
   async getById(id, requester) {
     const order = await orderRepository.findById(id);
     if (!order) throw new AppError(`Không tìm thấy đơn hàng #${id}`, 404);
-    if (order.userId !== requester.id && !staffRoles.has(requester.role)) {
+    if (Number(order.userId) !== Number(requester.id) && !staffRoles.has(requester.role)) {
       throw new AppError("Bạn không có quyền xem đơn hàng này", 403);
     }
     return OrderMapper.toResponseDTO(order);
@@ -50,7 +50,7 @@ export const orderService = {
   async cancel(id, requester) {
     const order = await orderRepository.findById(id);
     if (!order) throw new AppError(`Không tìm thấy đơn hàng #${id}`, 404);
-    if (order.userId !== requester.id) {
+    if (Number(order.userId) !== Number(requester.id)) {
       throw new AppError("Bạn không có quyền hủy đơn hàng này", 403);
     }
     if (order.status !== OrderStatus.PENDING) {

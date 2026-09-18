@@ -28,6 +28,7 @@ const request = async (path, options = {}) => {
 
 const run = async () => {
   let productBefore;
+  let secondProductBefore;
   try {
     await request("/auth/register", {
       method: "POST",
@@ -43,6 +44,7 @@ const run = async () => {
     const auth = { Authorization: `Bearer ${token}` };
 
     productBefore = (await request("/products/1")).data;
+    secondProductBefore = (await request("/products/2")).data;
     const created = await request("/orders", {
       method: "POST",
       headers: auth,
@@ -50,20 +52,59 @@ const run = async () => {
         customerName: "Smoke Test",
         phone: "0900000000",
         address: "Smoke Test Address",
-        items: [{ productId: 1, quantity: 1 }]
+        items: [
+          { productId: 1, quantity: 1 },
+          { productId: 2, quantity: 2 }
+        ]
       })
     });
     orderIds.push(created.data.id);
+
+    if (created.data.items.length !== 2) {
+      throw new Error("Multi-item order did not return both line items");
+    }
+    const createdProductIds = created.data.items
+      .map((item) => Number(item.productId))
+      .sort((a, b) => a - b);
+    if (createdProductIds[0] !== 1 || createdProductIds[1] !== 2) {
+      throw new Error("Order line items do not match the requested products");
+    }
+    const orderDetails = await request(`/orders/${created.data.id}`, { headers: auth });
+    if (orderDetails.data.items.length !== 2) {
+      throw new Error("Customer order details did not return all line items");
+    }
+
+    const myInvoices = await request("/invoices/my", { headers: auth });
+    const createdInvoice = myInvoices.data.find(
+      (invoice) => Number(invoice.id) === Number(created.data.id)
+    );
+    if (!createdInvoice || createdInvoice.details.length !== 2) {
+      throw new Error("Customer invoice list did not include the new multi-item invoice");
+    }
+    const invoiceDetails = await request(`/invoices/${created.data.id}`, { headers: auth });
+    if (invoiceDetails.data.details.length !== 2) {
+      throw new Error("Invoice detail endpoint did not return all line items");
+    }
 
     const productAfterOrder = (await request("/products/1")).data;
     if (productAfterOrder.stock !== productBefore.stock - 1) {
       throw new Error("Tồn kho không giảm đúng sau khi đặt hàng");
     }
 
+    const secondProductAfterOrder = (await request("/products/2")).data;
+    if (secondProductAfterOrder.stock !== secondProductBefore.stock - 2) {
+      throw new Error("Stock for the second item was not decremented correctly");
+    }
+
     await request(`/orders/${orderIds[0]}/cancel`, { method: "PATCH", headers: auth });
     const productAfterCancel = (await request("/products/1")).data;
     if (productAfterCancel.stock !== productBefore.stock) {
       throw new Error("Tồn kho không được hoàn lại sau khi hủy đơn");
+    }
+
+    const secondProductAfterCancel = (await request("/products/2")).data;
+    if (secondProductAfterCancel.stock !== secondProductBefore.stock) {
+      throw new Error("Stock for the second item was not restored after cancellation");
     }
 
     const adminToken = jwt.sign(
@@ -100,7 +141,7 @@ const run = async () => {
     const employees = await request("/users/employees", { headers: adminHeaders });
     if (!Array.isArray(employees.data)) throw new Error("ADMIN không đọc được danh sách nhân sự");
 
-    console.log("Smoke test passed: auth, customer order flow, stock rollback and admin access.");
+    console.log("Smoke test passed: auth, multi-item order, stock rollback and admin access.");
   } finally {
     // Xóa dữ liệu tạm, không ảnh hưởng dữ liệu người dùng hiện có.
     if (token) {

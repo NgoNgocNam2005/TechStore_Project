@@ -3,6 +3,8 @@ import "./App.css";
 import LoginPage from "./pages/LoginPage.jsx";
 import AccountPanel from "./pages/AccountPanel.jsx";
 import ReviewPanel from "./pages/ReviewPanel.jsx";
+import OrderDetailsPanel from "./pages/OrderDetailsPanel.jsx";
+import ProductDetailsPanel from "./pages/ProductDetailsPanel.jsx";
 
 function App() {
   // Auth state
@@ -21,6 +23,9 @@ function App() {
       return [];
     }
   });
+  const [selectedCartIds, setSelectedCartIds] = useState(
+    () => new Set(cart.map((item) => String(item.productId)))
+  );
 
   // Phân quyền dựa trên user đang đăng nhập
   const activeRole = currentUser
@@ -35,6 +40,7 @@ function App() {
     setToken(jwt);
     setCurrentUser(user);
     setCart([]);
+    setSelectedCartIds(new Set());
     localStorage.setItem("techstore_user", JSON.stringify(user));
     localStorage.removeItem("techstore_cart");
   };
@@ -42,6 +48,8 @@ function App() {
   const clearSession = useCallback(() => {
     setToken(null);
     setCurrentUser(null);
+    setCart([]);
+    setSelectedCartIds(new Set());
     localStorage.removeItem("techstore_token");
     localStorage.removeItem("techstore_user");
     localStorage.removeItem("techstore_cart");
@@ -86,8 +94,17 @@ function App() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [wishlist, setWishlist] = useState([]);
+  const [addresses, setAddresses] = useState([]);
   const [wishlistOpen, setWishlistOpen] = useState(false);
   const [reviewProduct, setReviewProduct] = useState(null);
+  const [orderDetails, setOrderDetails] = useState(null);
+  const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
+  const [orderDetailsLoading, setOrderDetailsLoading] = useState(false);
+  const [orderDetailsError, setOrderDetailsError] = useState("");
+  const [productDetails, setProductDetails] = useState(null);
+  const [productDetailsOpen, setProductDetailsOpen] = useState(false);
+  const [productDetailsLoading, setProductDetailsLoading] = useState(false);
+  const [productDetailsError, setProductDetailsError] = useState("");
   const [employees, setEmployees] = useState([]);
   const [serverOnline, setServerOnline] = useState(false);
 
@@ -140,22 +157,96 @@ function App() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const openOrderDetails = async (orderId) => {
+    setOrderDetailsOpen(true);
+    setOrderDetails(null);
+    setOrderDetailsError("");
+    setOrderDetailsLoading(true);
+
+    try {
+      const detailsUrl = activeRole === "CUSTOMER"
+        ? `/api/invoices/${orderId}`
+        : `/api/orders/${orderId}`;
+      let response = await fetch(detailsUrl, {
+        headers: authHeaders(),
+      });
+
+      if (response.status === 401) {
+        const refreshResponse = await fetch("/api/auth/refresh", {
+          method: "POST",
+          credentials: "include",
+        });
+
+        if (!refreshResponse.ok) {
+          clearSession();
+          throw new Error("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
+        }
+
+        const session = await refreshResponse.json();
+        setToken(session.token);
+        setCurrentUser(session.user);
+        localStorage.setItem("techstore_user", JSON.stringify(session.user));
+        response = await fetch(detailsUrl, {
+          headers: { Authorization: `Bearer ${session.token}` },
+        });
+      }
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.message || "Không tải được chi tiết đơn hàng.");
+      }
+      setOrderDetails(result.data);
+    } catch (error) {
+      setOrderDetailsError(error.message || "Không tải được chi tiết đơn hàng.");
+    } finally {
+      setOrderDetailsLoading(false);
+    }
+  };
+
+  const openProductDetails = async (productId) => {
+    if (!productId) return;
+    setProductDetailsOpen(true);
+    setProductDetails(null);
+    setProductDetailsError("");
+    setProductDetailsLoading(true);
+
+    try {
+      const response = await fetch(`/api/products/${productId}`);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.message || "Không tải được thông tin sản phẩm.");
+      }
+      setProductDetails(result.data);
+    } catch (error) {
+      setProductDetailsError(error.message || "Không tải được thông tin sản phẩm.");
+    } finally {
+      setProductDetailsLoading(false);
+    }
+  };
+
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const cartTotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
+  const selectedCartItems = cart.filter((item) =>
+    selectedCartIds.has(String(item.productId))
+  );
+  const selectedCartTotal = selectedCartItems.reduce(
+    (total, item) => total + item.price * item.quantity,
+    0
+  );
+  const allCartItemsSelected = cart.length > 0 && selectedCartItems.length === cart.length;
 
   useEffect(() => {
     localStorage.setItem("techstore_cart", JSON.stringify(cart));
   }, [cart]);
 
   const handleAddToCart = (product) => {
-    const existing = cart.find(item => item.productId === product.id);
+    const existing = cart.find(item => Number(item.productId) === Number(product.id));
     if (existing && existing.quantity >= product.stock) {
       showToast(`Sản phẩm "${product.name}" đã đạt số lượng tồn kho`, "error");
       return;
     }
 
     if (existing) {
-      setCart(cart.map(item => item.productId === product.id
+      setCart(cart.map(item => Number(item.productId) === Number(product.id)
         ? { ...item, quantity: item.quantity + 1, stock: product.stock }
         : item));
     } else {
@@ -169,6 +260,7 @@ function App() {
         quantity: 1
       }]);
     }
+    setSelectedCartIds((current) => new Set([...current, String(product.id)]));
     showToast(`Đã thêm "${product.name}" vào giỏ hàng`);
   };
 
@@ -181,11 +273,32 @@ function App() {
 
   const removeFromCart = (productId) => {
     setCart(currentCart => currentCart.filter(item => item.productId !== productId));
+    setSelectedCartIds((current) => {
+      const next = new Set(current);
+      next.delete(String(productId));
+      return next;
+    });
+  };
+
+  const toggleCartItem = (productId) => {
+    const id = String(productId);
+    setSelectedCartIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllCartItems = (checked) => {
+    setSelectedCartIds(
+      checked ? new Set(cart.map((item) => String(item.productId))) : new Set()
+    );
   };
 
   const openCheckout = () => {
-    if (cart.length === 0) {
-      showToast("Giỏ hàng đang trống", "error");
+    if (selectedCartItems.length === 0) {
+      showToast("Hãy chọn ít nhất một sản phẩm để đặt hàng", "error");
       return;
     }
     setOrderForm(form => ({
@@ -206,6 +319,7 @@ function App() {
       stock: product.stock,
       quantity: 1
     }]);
+    setSelectedCartIds(new Set([String(product.id)]));
     setOrderForm(form => ({
       ...form,
       customerName: form.customerName || currentUser.fullName || "",
@@ -229,7 +343,7 @@ function App() {
       }
 
       // Đơn hàng
-      const orderPath = activeRole === "CUSTOMER" ? "/api/orders/my" : "/api/orders";
+      const orderPath = activeRole === "CUSTOMER" ? "/api/invoices/my" : "/api/orders";
       const orderRes = await fetch(orderPath, { headers: authHeaders() });
       if (orderRes.status === 401) {
         if (await refreshSession()) return;
@@ -245,13 +359,21 @@ function App() {
         const wishlistRes = await fetch("/api/users/me/wishlist", {
           headers: authHeaders()
         });
-
         if (wishlistRes.ok) {
           const json = await wishlistRes.json();
           setWishlist(json.data || []);
         }
+
+        const addressRes = await fetch("/api/users/me/addresses", {
+          headers: authHeaders()
+        });
+        if (addressRes.ok) {
+          const json = await addressRes.json();
+          setAddresses(json.data || []);
+        }
       } else {
         setWishlist([]);
+        setAddresses([]);
       }
 
       // Chỉ ADMIN được quản lý nhân sự và gọi endpoint này.
@@ -333,7 +455,10 @@ function App() {
   // 2. Khách hàng: Gửi đơn đặt mua
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
-    if (cart.length === 0) return;
+    if (selectedCartItems.length === 0) {
+      showToast("Hãy chọn ít nhất một sản phẩm để đặt hàng", "error");
+      return;
+    }
 
     try {
       const payload = {
@@ -341,7 +466,10 @@ function App() {
         phone: orderForm.phone,
         address: orderForm.address,
         note: orderForm.note,
-        items: cart.map(item => ({ productId: item.productId, quantity: item.quantity }))
+        items: selectedCartItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity
+        }))
       };
 
       const res = await fetch("/api/orders", {
@@ -354,7 +482,15 @@ function App() {
       if (!res.ok) throw new Error(result.message || "Đặt hàng thất bại");
 
       showToast("🎉 Đặt hàng thành công!");
-      setCart([]);
+      const orderedIds = new Set(
+        selectedCartItems.map((item) => String(item.productId))
+      );
+      setCart((currentCart) => currentCart.filter(
+        (item) => !orderedIds.has(String(item.productId))
+      ));
+      setSelectedCartIds((current) => new Set(
+        [...current].filter((id) => !orderedIds.has(id))
+      ));
       setCheckoutOpen(false);
       setOrderForm({ customerName: "", phone: "", address: "", note: "" });
 
@@ -665,6 +801,25 @@ function App() {
         />
       )}
 
+      {orderDetailsOpen && (
+        <OrderDetailsPanel
+          order={orderDetails}
+          loading={orderDetailsLoading}
+          error={orderDetailsError}
+          onClose={() => setOrderDetailsOpen(false)}
+          onProductClick={openProductDetails}
+        />
+      )}
+
+      {productDetailsOpen && (
+        <ProductDetailsPanel
+          product={productDetails}
+          loading={productDetailsLoading}
+          error={productDetailsError}
+          onClose={() => setProductDetailsOpen(false)}
+        />
+      )}
+
       {/* VIEW: KHÁCH HÀNG (CUSTOMER) */}
       {activeRole === "CUSTOMER" && (
         <div>
@@ -809,11 +964,25 @@ function App() {
 
           <section className="orders-section cart-section">
             <div className="section-heading-row">
-              <h3>🛒 Giỏ hàng ({cartCount} sản phẩm)</h3>
+              <h3>🛒 Giỏ hàng ({cart.length} mặt hàng, {cartCount} sản phẩm)</h3>
               {cart.length > 0 && (
-                <button className="btn-primary" onClick={openCheckout}>
-                  Tiến hành đặt hàng
-                </button>
+                <div className="cart-heading-actions">
+                  <label className="cart-select-all">
+                    <input
+                      type="checkbox"
+                      checked={allCartItemsSelected}
+                      onChange={(event) => toggleAllCartItems(event.target.checked)}
+                    />
+                    Chọn tất cả
+                  </label>
+                  <button
+                    className="btn-primary"
+                    onClick={openCheckout}
+                    disabled={selectedCartItems.length === 0}
+                  >
+                    Đặt hàng ({selectedCartItems.length})
+                  </button>
+                </div>
               )}
             </div>
             {cart.length === 0 ? (
@@ -821,7 +990,17 @@ function App() {
             ) : (
               <>
                 {cart.map(item => (
-                  <div className="cart-item" key={item.productId}>
+                  <div
+                    className={`cart-item ${selectedCartIds.has(String(item.productId)) ? "selected" : ""}`}
+                    key={item.productId}
+                  >
+                    <input
+                      className="cart-select-checkbox"
+                      type="checkbox"
+                      checked={selectedCartIds.has(String(item.productId))}
+                      onChange={() => toggleCartItem(item.productId)}
+                      aria-label={`Chọn ${item.name} để đặt hàng`}
+                    />
                     <img src={item.imageUrl} alt={item.name} />
                     <div className="cart-item-info">
                       <strong>{item.name}</strong>
@@ -845,8 +1024,8 @@ function App() {
                   </div>
                 ))}
                 <div className="cart-total-row">
-                  <span>Tổng cộng</span>
-                  <strong>{new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(cartTotal)}</strong>
+                  <span>Tạm tính sản phẩm đã chọn ({selectedCartItems.length})</span>
+                  <strong>{new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(selectedCartTotal)}</strong>
                 </div>
               </>
             )}
@@ -880,6 +1059,12 @@ function App() {
                   <span className={`status-badge ${order.status}`}>
                     ● {order.statusText}
                   </span>
+                  <button
+                    className="order-detail-btn"
+                    onClick={() => openOrderDetails(order.id)}
+                  >
+                    Xem chi tiết
+                  </button>
                   {order.status === "PENDING" && (
                     <button
                       className="btn-danger"
@@ -1101,7 +1286,15 @@ function App() {
                   <tbody>
                     {orders.map(o => (
                       <tr key={o.id}>
-                        <td>#{o.id}</td>
+                        <td>
+                          <div>#{o.id}</div>
+                          <button
+                            className="order-detail-btn"
+                            onClick={() => openOrderDetails(o.id)}
+                          >
+                            Chi tiết
+                          </button>
+                        </td>
                         <td>
                           <div style={{ fontWeight: 600 }}>{o.customerName}</div>
                           <div style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>{o.phone}</div>
@@ -1297,7 +1490,7 @@ function App() {
       )}
 
       {/* MODAL CHECKOUT (CUSTOMER) */}
-      {checkoutOpen && cart.length > 0 && (
+      {checkoutOpen && selectedCartItems.length > 0 && (
         <div className="modal-backdrop" onClick={() => setCheckoutOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
@@ -1306,7 +1499,7 @@ function App() {
             </div>
 
             <div className="order-summary-box">
-              {cart.map(item => (
+              {selectedCartItems.map(item => (
                 <div className="summary-row" key={item.productId}>
                   <span>{item.name} × {item.quantity}</span>
                   <span>{new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(item.price * item.quantity)}</span>
@@ -1314,11 +1507,39 @@ function App() {
               ))}
               <div className="summary-row total">
                 <span>Tổng thanh toán:</span>
-                <span>{new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(cartTotal)}</span>
+                <span>{new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(selectedCartTotal)}</span>
               </div>
             </div>
 
             <form onSubmit={handlePlaceOrder}>
+              {addresses.length > 0 && (
+                <div className="form-group">
+                  <label>Chọn địa chỉ đã lưu:</label>
+                  <select
+                    className="form-input"
+                    defaultValue=""
+                    onChange={e => {
+                      const selected = addresses.find(a => String(a.id) === e.target.value);
+                      if (!selected) return;
+                      setOrderForm(f => ({
+                        ...f,
+                        customerName: selected.recipientName || f.customerName,
+                        phone: selected.phone || f.phone,
+                        address: [selected.addressLine, selected.ward, selected.district, selected.province]
+                          .filter(Boolean).join(", ")
+                      }));
+                    }}
+                  >
+                    <option value="">-- Chọn nhanh địa chỉ đã lưu --</option>
+                    {addresses.map(a => (
+                      <option key={a.id} value={String(a.id)}>
+                        {a.label}{a.isDefault ? " ★" : ""} — {a.recipientName}, {a.addressLine}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="form-group">
                 <label>Họ và tên người nhận:</label>
                 <input
