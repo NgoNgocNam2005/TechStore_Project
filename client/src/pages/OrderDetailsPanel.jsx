@@ -11,6 +11,16 @@ export default function OrderDetailsPanel({
   onProductClick,
 }) {
   const items = order?.details || order?.items || [];
+  const orderSteps = [
+    { status: "PENDING", label: "Đã đặt", description: "Đơn hàng đã được tiếp nhận" },
+    { status: "CONFIRMED", label: "Đã xác nhận", description: "Cửa hàng đã xác nhận đơn" },
+    { status: "SHIPPED", label: "Đang giao", description: "Đơn hàng đang được vận chuyển" },
+    { status: "DELIVERED", label: "Đã giao", description: "Đơn hàng đã được giao" },
+  ];
+  const currentStepIndex = Math.max(
+    0,
+    orderSteps.findIndex((step) => step.status === order?.status),
+  );
 
   return (
     <div className="modal-backdrop order-details-backdrop" onClick={onClose}>
@@ -56,6 +66,37 @@ export default function OrderDetailsPanel({
               <div className="order-details-address"><span>Địa chỉ giao hàng</span><strong>{order.address}</strong></div>
               {order.note && <div className="order-details-address"><span>Ghi chú</span><strong>{order.note}</strong></div>}
             </div>
+
+            <section className="order-tracking" aria-label="Tiến trình đơn hàng">
+              <h4 className="order-details-section-title">Tiến trình đơn hàng</h4>
+              {order.status === "CANCELLED" ? (
+                <div className="order-cancelled-state" role="status">
+                  <strong>Đơn hàng đã bị hủy</strong>
+                  <span>{order.statusText || "Đã hủy"}</span>
+                </div>
+              ) : (
+                <ol className="order-timeline">
+                  {orderSteps.map((step, index) => {
+                    const state = index < currentStepIndex
+                      ? "complete"
+                      : index === currentStepIndex
+                        ? "current"
+                        : "upcoming";
+                    return (
+                      <li className={`order-timeline-step ${state}`} key={step.status}>
+                        <span className="order-timeline-marker" aria-hidden="true">
+                          {state === "complete" ? "✓" : index + 1}
+                        </span>
+                        <div className="order-timeline-copy">
+                          <strong>{step.label}</strong>
+                          <span>{step.description}</span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </section>
 
             <h4 className="order-details-section-title">Sản phẩm trong đơn</h4>
             <div className="order-details-items">

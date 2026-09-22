@@ -17,7 +17,7 @@ export class CreateEmployeeDTO {
       throw new AppError("Mật khẩu nhân viên phải có ít nhất 6 ký tự", 400);
     }
     if (!this.fullName) throw new AppError("Họ tên nhân viên không được để trống", 400);
-    if (![Role.SALER, Role.MANAGER, Role.ADMIN].includes(this.role)) {
+    if (![Role.SALER, Role.MANAGER, Role.ADMIN, Role.SHIPPER].includes(this.role)) {
       throw new AppError(`Chức vụ không hợp lệ. Chỉ chấp nhận: SALER, MANAGER, ADMIN`, 400);
     }
     if (this.email && !/^\S+@\S+\.\S+$/.test(this.email)) {
@@ -46,7 +46,7 @@ export class UpdateEmployeeDTO {
     if (this.password !== undefined && this.password.length < 6) {
       throw new AppError("Mật khẩu phải có ít nhất 6 ký tự", 400);
     }
-    if (this.role !== undefined && ![Role.SALER, Role.MANAGER, Role.ADMIN].includes(this.role)) {
+    if (this.role !== undefined && ![Role.SALER, Role.MANAGER, Role.ADMIN, Role.SHIPPER].includes(this.role)) {
       throw new AppError("Chức vụ không hợp lệ", 400);
     }
     if (this.email && !/^\S+@\S+\.\S+$/.test(this.email)) {

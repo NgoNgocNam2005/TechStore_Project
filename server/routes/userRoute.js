@@ -2,6 +2,7 @@ import express from "express";
 import { userController } from "../controller/userController.js";
 import { authenticate, authorize } from "../middleware/authMiddleware.js";
 import { wishlistController } from "../controller/wishlistController.js";
+import { cartController } from "../controller/cartController.js";
 
 const router = express.Router();
 
@@ -12,6 +13,8 @@ router.get("/me/addresses", authenticate, userController.getAddresses);
 router.post("/me/addresses", authenticate, userController.createAddress);
 router.patch("/me/addresses/:addressId", authenticate, userController.updateAddress);
 router.delete("/me/addresses/:addressId", authenticate, userController.deleteAddress);
+router.get("/me/cart", authenticate, cartController.getMine);
+router.put("/me/cart", authenticate, cartController.replaceMine);
 router.get("/me/wishlist", authenticate, wishlistController.getMine);
 router.post("/me/wishlist/:productId", authenticate, wishlistController.add);
 router.delete("/me/wishlist/:productId", authenticate, wishlistController.remove);

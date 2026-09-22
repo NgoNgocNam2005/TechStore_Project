@@ -3,7 +3,8 @@ import { OrderMapper } from "../mapper/orderMapper.js";
 import { OrderStatus } from "../enums/OrderStatus.js";
 import { AppError } from "../exception/AppError.js";
 
-const staffRoles = new Set(["ADMIN", "MANAGER", "SALER"]);
+const staffRoles = new Set(["ADMIN", "MANAGER", "SALER", "SHIPPER"]);
+const fullOrderManagementRoles = new Set(["ADMIN", "MANAGER"]);
 
 const allowedTransitions = {
   PENDING: new Set([OrderStatus.CONFIRMED, OrderStatus.CANCELLED]),
@@ -61,7 +62,7 @@ export const orderService = {
     return OrderMapper.toResponseDTO(updated);
   },
 
-  async updateStatus(id, newStatus) {
+  async updateStatus(id, newStatus, requester) {
     if (!Object.values(OrderStatus).includes(newStatus)) {
       throw new AppError(`Trạng thái "${newStatus}" không hợp lệ`, 400);
     }
@@ -69,7 +70,18 @@ export const orderService = {
     const order = await orderRepository.findById(id);
     if (!order) throw new AppError(`Không tìm thấy đơn hàng #${id}`, 404);
 
-    if (order.status !== newStatus && !allowedTransitions[order.status]?.has(newStatus)) {
+    const isFullManager = fullOrderManagementRoles.has(requester?.role);
+    const canSalerConfirm = requester?.role === "SALER"
+      && order.status === OrderStatus.PENDING
+      && newStatus === OrderStatus.CONFIRMED;
+    const canShipperDeliver = requester?.role === "SHIPPER"
+      && ((order.status === OrderStatus.CONFIRMED && newStatus === OrderStatus.SHIPPED)
+        || (order.status === OrderStatus.SHIPPED && newStatus === OrderStatus.DELIVERED));
+    const transitionAllowed = isFullManager
+      ? allowedTransitions[order.status]?.has(newStatus)
+      : canSalerConfirm || canShipperDeliver;
+
+    if (order.status !== newStatus && !transitionAllowed) {
       throw new AppError(`Không thể chuyển đơn hàng từ ${order.status} sang ${newStatus}`, 400);
     }
 
@@ -79,6 +91,24 @@ export const orderService = {
     }
 
     const updated = await orderRepository.updateStatus(id, newStatus);
+    return OrderMapper.toResponseDTO(updated);
+  },
+
+  async updatePaymentStatus(id, paymentStatus, requester) {
+    if (!fullOrderManagementRoles.has(requester?.role)) {
+      throw new AppError("Chi ADMIN hoac MANAGER moi duoc cap nhat trang thai thanh toan", 403);
+    }
+    if (!["UNPAID", "PAID"].includes(paymentStatus)) {
+      throw new AppError("Trang thai thanh toan khong hop le", 400);
+    }
+
+    const order = await orderRepository.findById(id);
+    if (!order) throw new AppError(`Khong tim thay don hang #${id}`, 404);
+    if (order.status === OrderStatus.CANCELLED && paymentStatus === "PAID") {
+      throw new AppError("Khong the danh dau da thanh toan cho don da huy", 400);
+    }
+
+    const updated = await orderRepository.updatePaymentStatus(id, paymentStatus);
     return OrderMapper.toResponseDTO(updated);
   }
 };

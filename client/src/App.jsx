@@ -1,10 +1,45 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import "./App.css";
 import LoginPage from "./pages/LoginPage.jsx";
 import AccountPanel from "./pages/AccountPanel.jsx";
 import ReviewPanel from "./pages/ReviewPanel.jsx";
 import OrderDetailsPanel from "./pages/OrderDetailsPanel.jsx";
 import ProductDetailsPanel from "./pages/ProductDetailsPanel.jsx";
+
+const normalizeOrderSearch = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase()
+    .trim();
+
+const orderStatusOptions = [
+  { value: "PENDING", label: "Chờ duyệt" },
+  { value: "CONFIRMED", label: "Đã xác nhận" },
+  { value: "SHIPPED", label: "Đang giao hàng" },
+  { value: "DELIVERED", label: "Đã giao hàng" },
+  { value: "CANCELLED", label: "Hủy đơn" },
+];
+
+const getStatusOptionsForRole = (role, currentStatus) => {
+  if (role === "SALER") {
+    return currentStatus === "PENDING"
+      ? orderStatusOptions.filter((option) => ["PENDING", "CONFIRMED"].includes(option.value))
+      : orderStatusOptions.filter((option) => option.value === currentStatus);
+  }
+
+  if (role === "SHIPPER") {
+    const nextStatuses = currentStatus === "CONFIRMED"
+      ? ["CONFIRMED", "SHIPPED"]
+      : currentStatus === "SHIPPED"
+        ? ["SHIPPED", "DELIVERED"]
+        : [currentStatus];
+    return orderStatusOptions.filter((option) => nextStatuses.includes(option.value));
+  }
+
+  return orderStatusOptions;
+};
 
 function App() {
   // Auth state
@@ -16,24 +51,32 @@ function App() {
     }
   }); // { id, username, fullName, role, roleTitle, ... }
   const [token, setToken] = useState(null);
-  const [cart, setCart] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("techstore_cart") || "[]");
-    } catch {
-      return [];
-    }
-  });
+  const [cart, setCart] = useState([]);
+  const [cartLoaded, setCartLoaded] = useState(false);
+  const [cartError, setCartError] = useState("");
+  const cartWriteQueue = useRef(Promise.resolve());
   const [selectedCartIds, setSelectedCartIds] = useState(
     () => new Set(cart.map((item) => String(item.productId)))
   );
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [ordersError, setOrdersError] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [adminOrderStatusFilter, setAdminOrderStatusFilter] = useState("ALL");
+  const [adminOrderPaymentFilter, setAdminOrderPaymentFilter] = useState("ALL");
+  const [adminOrderSearch, setAdminOrderSearch] = useState("");
+  const [wishlist, setWishlist] = useState([]);
+  const [addresses, setAddresses] = useState([]);
 
   // Phân quyền dựa trên user đang đăng nhập
   const activeRole = currentUser
-    ? ["ADMIN", "MANAGER", "SALER"].includes(currentUser.role)
+    ? ["ADMIN", "MANAGER", "SALER", "SHIPPER"].includes(currentUser.role)
       ? "ADMIN"
       : "CUSTOMER"
     : "CUSTOMER";
   const canManageStaff = currentUser?.role === "ADMIN";
+  const canManagePayment = ["ADMIN", "MANAGER"].includes(currentUser?.role);
   const currentRole = currentUser?.role;
 
   const handleLoginSuccess = (jwt, user) => {
@@ -41,8 +84,18 @@ function App() {
     setCurrentUser(user);
     setCart([]);
     setSelectedCartIds(new Set());
+    setCartLoaded(false);
+    setCartError("");
+    setOrders([]);
+    setOrdersError("");
+    setOrderStatusFilter("ALL");
+    setOrderSearch("");
+    setAdminOrderStatusFilter("ALL");
+    setAdminOrderPaymentFilter("ALL");
+    setAdminOrderSearch("");
+    setWishlist([]);
+    setAddresses([]);
     localStorage.setItem("techstore_user", JSON.stringify(user));
-    localStorage.removeItem("techstore_cart");
   };
 
   const clearSession = useCallback(() => {
@@ -50,15 +103,40 @@ function App() {
     setCurrentUser(null);
     setCart([]);
     setSelectedCartIds(new Set());
+    setCartLoaded(false);
+    setCartError("");
+    setOrders([]);
+    setOrdersError("");
+    setOrderStatusFilter("ALL");
+    setOrderSearch("");
+    setAdminOrderStatusFilter("ALL");
+    setAdminOrderPaymentFilter("ALL");
+    setAdminOrderSearch("");
+    setWishlist([]);
+    setAddresses([]);
     localStorage.removeItem("techstore_token");
     localStorage.removeItem("techstore_user");
-    localStorage.removeItem("techstore_cart");
   }, []);
 
   const authHeaders = useCallback((json = false) => ({
     ...(json ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   }), [token]);
+
+  const replaceCartOnServer = useCallback(async (items) => {
+    const response = await fetch("/api/users/me/cart", {
+      method: "PUT",
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        items: items.map(({ productId, quantity }) => ({ productId, quantity })),
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.message || "Không thể lưu giỏ hàng vào tài khoản.");
+    }
+    return result.data || [];
+  }, [authHeaders]);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -91,10 +169,6 @@ function App() {
   };
 
   // Dữ liệu từ Server
-  const [products, setProducts] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [wishlist, setWishlist] = useState([]);
-  const [addresses, setAddresses] = useState([]);
   const [wishlistOpen, setWishlistOpen] = useState(false);
   const [reviewProduct, setReviewProduct] = useState(null);
   const [orderDetails, setOrderDetails] = useState(null);
@@ -124,7 +198,7 @@ function App() {
   });
 
   // Tab của Admin
-  const [adminTab, setAdminTab] = useState("PRODUCTS"); // PRODUCTS | ORDERS | STAFF
+  const [adminTab, setAdminTab] = useState("DASHBOARD"); // DASHBOARD | PRODUCTS | ORDERS | STAFF
 
   // Form thêm sản phẩm (Admin)
   const [newProduct, setNewProduct] = useState({
@@ -232,12 +306,89 @@ function App() {
     0
   );
   const allCartItemsSelected = cart.length > 0 && selectedCartItems.length === cart.length;
+  const filteredOrders = orders.filter((order) => {
+    const matchesStatus =
+      orderStatusFilter === "ALL" || order.status === orderStatusFilter;
+    const items = order.items || order.details || [];
+    const searchableText = [
+      order.id,
+      order.customerName,
+      order.phone,
+      order.address,
+      order.statusText,
+      ...items.flatMap((item) => [
+        item.productName,
+        item.name,
+        item.product?.name,
+      ]),
+    ].filter(Boolean).join(" ");
+    const matchesSearch = normalizeOrderSearch(searchableText).includes(
+      normalizeOrderSearch(orderSearch),
+    );
+
+    return matchesStatus && matchesSearch;
+  });
+  const filteredAdminOrders = orders.filter((order) => {
+    const matchesStatus = adminOrderStatusFilter === "ALL"
+      || order.status === adminOrderStatusFilter;
+    const matchesPayment = adminOrderPaymentFilter === "ALL"
+      || (order.paymentStatus || "UNPAID") === adminOrderPaymentFilter;
+    const items = order.items || order.details || [];
+    const searchText = [
+      order.id,
+      order.customerName,
+      order.phone,
+      order.address,
+      ...items.flatMap((item) => [item.productName, item.name]),
+    ].filter(Boolean).join(" ");
+    const matchesSearch = normalizeOrderSearch(searchText).includes(
+      normalizeOrderSearch(adminOrderSearch),
+    );
+    return matchesStatus && matchesPayment && matchesSearch;
+  });
+  const lowStockProducts = products
+    .filter((product) => product.status !== "INACTIVE" && Number(product.stock) <= 5)
+    .sort((a, b) => Number(a.stock) - Number(b.stock));
+  const adminMetrics = {
+    productCount: products.length,
+    orderCount: orders.length,
+    pendingCount: orders.filter((order) => order.status === "PENDING").length,
+    shippingCount: orders.filter((order) => ["CONFIRMED", "SHIPPED"].includes(order.status)).length,
+    deliveredCount: orders.filter((order) => order.status === "DELIVERED").length,
+  };
+  const recentOrders = [...orders]
+    .sort((a, b) => Number(b.id) - Number(a.id))
+    .slice(0, 5);
 
   useEffect(() => {
-    localStorage.setItem("techstore_cart", JSON.stringify(cart));
-  }, [cart]);
+    if (!token || activeRole !== "CUSTOMER" || !cartLoaded) return undefined;
+
+    let cancelled = false;
+    const snapshot = cart.map(({ productId, quantity }) => ({ productId, quantity }));
+    const write = cartWriteQueue.current
+      .catch(() => {})
+      .then(async () => {
+        if (cancelled) return;
+        await replaceCartOnServer(snapshot);
+      });
+    cartWriteQueue.current = write;
+
+    write.then(() => {
+      if (!cancelled) setCartError("");
+    }).catch((error) => {
+      if (!cancelled) setCartError(error.message || "Không thể đồng bộ giỏ hàng.");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRole, cart, cartLoaded, replaceCartOnServer, token]);
 
   const handleAddToCart = (product) => {
+    if (!cartLoaded) {
+      showToast("Đang tải giỏ hàng của tài khoản, vui lòng thử lại sau giây lát.", "error");
+      return;
+    }
     const existing = cart.find(item => Number(item.productId) === Number(product.id));
     if (existing && existing.quantity >= product.stock) {
       showToast(`Sản phẩm "${product.name}" đã đạt số lượng tồn kho`, "error");
@@ -309,15 +460,25 @@ function App() {
   };
 
   const buyNow = (product) => {
-    setCart([{
-      productId: product.id,
-      name: product.name,
-      price: product.price,
-      formattedPrice: product.formattedPrice,
-      imageUrl: product.imageUrl,
-      stock: product.stock,
-      quantity: 1
-    }]);
+    if (!cartLoaded) {
+      showToast("Đang tải giỏ hàng của tài khoản, vui lòng thử lại sau giây lát.", "error");
+      return;
+    }
+    setCart((currentCart) => {
+      const existing = currentCart.find(
+        (item) => Number(item.productId) === Number(product.id)
+      );
+      if (existing) return currentCart;
+      return [...currentCart, {
+        productId: product.id,
+        name: product.name,
+        price: product.price,
+        formattedPrice: product.formattedPrice,
+        imageUrl: product.imageUrl,
+        stock: product.stock,
+        quantity: 1
+      }];
+    });
     setSelectedCartIds(new Set([String(product.id)]));
     setOrderForm(form => ({
       ...form,
@@ -352,9 +513,32 @@ function App() {
       if (orderRes.ok) {
         const json = await orderRes.json();
         setOrders(json.data || []);
+        setOrdersError("");
+      } else {
+        const json = await orderRes.json().catch(() => ({}));
+        setOrdersError(json.message || "Không tải được danh sách đơn hàng.");
       }
 
       if (activeRole === "CUSTOMER") {
+        const cartRes = await fetch("/api/users/me/cart", {
+          headers: authHeaders()
+        });
+        if (cartRes.status === 401) {
+          if (await refreshSession()) return;
+          clearSession();
+          return;
+        }
+        const cartJson = await cartRes.json().catch(() => ({}));
+        if (!cartRes.ok) {
+          setCartLoaded(false);
+          throw new Error(cartJson.message || "Không tải được giỏ hàng từ tài khoản.");
+        }
+        const savedCart = Array.isArray(cartJson.data) ? cartJson.data : [];
+        setCart(savedCart);
+        setSelectedCartIds(new Set(savedCart.map((item) => String(item.productId))));
+        setCartError("");
+        setCartLoaded(true);
+
         const wishlistRes = await fetch("/api/users/me/wishlist", {
           headers: authHeaders()
         });
@@ -371,6 +555,9 @@ function App() {
           setAddresses(json.data || []);
         }
       } else {
+        setCart([]);
+        setSelectedCartIds(new Set());
+        setCartLoaded(false);
         setWishlist([]);
         setAddresses([]);
       }
@@ -387,9 +574,28 @@ function App() {
       }
     } catch (err) {
       console.error("Lỗi tải dữ liệu:", err);
+      setCartError(err.message || "Không tải được dữ liệu tài khoản.");
+      setOrdersError(err.message || "Không tải được danh sách đơn hàng.");
       setServerOnline(false);
     }
-  }, [activeRole, authHeaders, clearSession, currentRole, refreshSession]);
+  }, [
+    activeRole,
+    authHeaders,
+    clearSession,
+    currentRole,
+    refreshSession,
+    setAddresses,
+    setCart,
+    setCartError,
+    setCartLoaded,
+    setEmployees,
+    setOrders,
+    setOrdersError,
+    setProducts,
+    setSelectedCartIds,
+    setServerOnline,
+    setWishlist,
+  ]);
 
   const handleToggleWishlist = async (product) => {
     const savedItem = wishlist.find(
@@ -485,9 +691,16 @@ function App() {
       const orderedIds = new Set(
         selectedCartItems.map((item) => String(item.productId))
       );
-      setCart((currentCart) => currentCart.filter(
+      const remainingCart = cart.filter(
         (item) => !orderedIds.has(String(item.productId))
-      ));
+      );
+      try {
+        await replaceCartOnServer(remainingCart);
+        setCartError("");
+      } catch (cartSaveError) {
+        setCartError(`Đơn đã tạo nhưng chưa đồng bộ được giỏ hàng: ${cartSaveError.message}`);
+      }
+      setCart(remainingCart);
       setSelectedCartIds((current) => new Set(
         [...current].filter((id) => !orderedIds.has(id))
       ));
@@ -605,6 +818,22 @@ function App() {
 
       showToast(result.message);
       loadData();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleUpdatePaymentStatus = async (id, paymentStatus) => {
+    try {
+      const res = await fetch(`/api/orders/${id}/payment-status`, {
+        method: "PATCH",
+        headers: authHeaders(true),
+        body: JSON.stringify({ paymentStatus }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.message || "Không thể cập nhật thanh toán");
+      showToast(result.message);
+      await loadData();
     } catch (err) {
       alert(err.message);
     }
@@ -907,7 +1136,7 @@ function App() {
 
                     <button
                       className="btn-buy"
-                      disabled={!phone.isAvailable}
+                      disabled={!phone.isAvailable || !cartLoaded}
                       onClick={() => handleAddToCart(phone)}
                     >
                       {phone.isAvailable ? "Thêm giỏ" : "Tạm hết"}
@@ -915,6 +1144,7 @@ function App() {
                     {phone.isAvailable && (
                       <button
                         className="btn-buy btn-buy-secondary"
+                        disabled={!cartLoaded}
                         onClick={() => buyNow(phone)}
                       >
                         Mua ngay
@@ -998,7 +1228,10 @@ function App() {
                 </div>
               )}
             </div>
-            {cart.length === 0 ? (
+            {cartError && <p className="data-error" role="alert">{cartError}</p>}
+            {!cartLoaded ? (
+              <p className="empty-state">Đang tải giỏ hàng từ tài khoản...</p>
+            ) : cart.length === 0 ? (
               <p className="empty-state">Chưa có sản phẩm trong giỏ hàng.</p>
             ) : (
               <>
@@ -1047,7 +1280,38 @@ function App() {
           {/* Danh sách đơn hàng đã đặt của khách */}
           <section className="orders-section">
             <h3>📦 Đơn hàng của bạn ({orders.length} đơn)</h3>
-            {orders.map(order => (
+            {ordersError && <p className="data-error" role="alert">{ordersError}</p>}
+            {!ordersError && orders.length === 0 && (
+              <p className="empty-state">Bạn chưa có đơn hàng nào.</p>
+            )}
+            {orders.length > 0 && (
+              <div className="order-filters">
+                <input
+                  type="search"
+                  value={orderSearch}
+                  onChange={(event) => setOrderSearch(event.target.value)}
+                  placeholder="Tìm mã đơn, tên, số điện thoại, sản phẩm..."
+                  aria-label="Tìm kiếm đơn hàng"
+                />
+                <select
+                  value={orderStatusFilter}
+                  onChange={(event) => setOrderStatusFilter(event.target.value)}
+                  aria-label="Lọc theo trạng thái đơn hàng"
+                >
+                  <option value="ALL">Tất cả trạng thái</option>
+                  <option value="PENDING">Đang chờ xác nhận</option>
+                  <option value="CONFIRMED">Đã xác nhận</option>
+                  <option value="SHIPPED">Đang giao</option>
+                  <option value="DELIVERED">Đã giao</option>
+                  <option value="CANCELLED">Đã hủy</option>
+                </select>
+                <span>{filteredOrders.length}/{orders.length} đơn</span>
+              </div>
+            )}
+            {!ordersError && orders.length > 0 && filteredOrders.length === 0 && (
+              <p className="empty-state">Không tìm thấy đơn hàng phù hợp.</p>
+            )}
+            {filteredOrders.map(order => (
               <div key={order.id} className="order-card">
                 <div>
                   <div style={{ fontWeight: 700, fontSize: "1.05rem", marginBottom: 4 }}>
@@ -1110,6 +1374,12 @@ function App() {
 
           <div className="admin-tabs">
             <button
+              className={`admin-tab-btn ${adminTab === "DASHBOARD" ? "active" : ""}`}
+              onClick={() => setAdminTab("DASHBOARD")}
+            >
+              📊 Tổng quan
+            </button>
+            <button
               className={`admin-tab-btn ${adminTab === "PRODUCTS" ? "active" : ""}`}
               onClick={() => setAdminTab("PRODUCTS")}
             >
@@ -1130,6 +1400,137 @@ function App() {
               </button>
             )}
           </div>
+
+          {adminTab === "ORDERS" && (
+            <div className="admin-order-filters">
+              <input
+                type="search"
+                value={adminOrderSearch}
+                onChange={(event) => setAdminOrderSearch(event.target.value)}
+                placeholder="Tìm mã đơn, khách hàng, SĐT, sản phẩm..."
+                aria-label="Tìm kiếm đơn hàng quản trị"
+              />
+              <select
+                value={adminOrderStatusFilter}
+                onChange={(event) => setAdminOrderStatusFilter(event.target.value)}
+                aria-label="Lọc trạng thái đơn hàng quản trị"
+              >
+                <option value="ALL">Tất cả trạng thái</option>
+                {orderStatusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <select
+                value={adminOrderPaymentFilter}
+                onChange={(event) => setAdminOrderPaymentFilter(event.target.value)}
+                aria-label="Lọc trạng thái thanh toán"
+              >
+                <option value="ALL">Tất cả thanh toán</option>
+                <option value="UNPAID">Chưa thanh toán</option>
+                <option value="PAID">Đã thanh toán</option>
+              </select>
+              <span>{filteredAdminOrders.length}/{orders.length} đơn</span>
+            </div>
+          )}
+
+          {adminTab === "DASHBOARD" && (
+            <div className="admin-dashboard">
+              <div className="admin-dashboard-heading">
+                <div>
+                  <h3>Tổng quan cửa hàng</h3>
+                  <p>Số liệu hiện tại từ danh sách sản phẩm và đơn hàng.</p>
+                </div>
+                <button className="role-btn" onClick={() => void loadData()}>
+                  Làm mới dữ liệu
+                </button>
+              </div>
+
+              <div className="admin-metrics-grid">
+                <article className="admin-metric-card">
+                  <span>Sản phẩm</span>
+                  <strong>{adminMetrics.productCount}</strong>
+                  <button onClick={() => setAdminTab("PRODUCTS")}>Mở quản lý sản phẩm</button>
+                </article>
+                <article className="admin-metric-card">
+                  <span>Tổng đơn hàng</span>
+                  <strong>{adminMetrics.orderCount}</strong>
+                  <button onClick={() => setAdminTab("ORDERS")}>Mở quản lý đơn hàng</button>
+                </article>
+                <article className="admin-metric-card metric-warning">
+                  <span>Chờ xác nhận</span>
+                  <strong>{adminMetrics.pendingCount}</strong>
+                  <button onClick={() => setAdminTab("ORDERS")}>Xử lý đơn chờ</button>
+                </article>
+                <article className="admin-metric-card">
+                  <span>Đang xử lý / vận chuyển</span>
+                  <strong>{adminMetrics.shippingCount}</strong>
+                  <button onClick={() => setAdminTab("ORDERS")}>Theo dõi đơn hàng</button>
+                </article>
+                <article className="admin-metric-card metric-success">
+                  <span>Đã giao</span>
+                  <strong>{adminMetrics.deliveredCount}</strong>
+                  <button onClick={() => setAdminTab("ORDERS")}>Xem đơn đã giao</button>
+                </article>
+              </div>
+
+              <div className="admin-dashboard-columns">
+                <section className="admin-card-section">
+                  <div className="admin-dashboard-section-heading">
+                    <h3>Cảnh báo tồn kho thấp</h3>
+                    <span>{lowStockProducts.length} sản phẩm</span>
+                  </div>
+                  {lowStockProducts.length === 0 ? (
+                    <p className="empty-state">Không có sản phẩm nào sắp hết hàng.</p>
+                  ) : (
+                    <div className="admin-dashboard-list">
+                      {lowStockProducts.slice(0, 8).map((product) => (
+                        <div className="admin-dashboard-row" key={product.id}>
+                          <div>
+                            <strong>{product.name}</strong>
+                            <span>{product.brand}</span>
+                          </div>
+                          <b className={Number(product.stock) === 0 ? "stock-empty" : "stock-low"}>
+                            {product.stock} còn lại
+                          </b>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button className="role-btn" onClick={() => setAdminTab("PRODUCTS")}>
+                    Đi đến kho sản phẩm
+                  </button>
+                </section>
+
+                <section className="admin-card-section">
+                  <div className="admin-dashboard-section-heading">
+                    <h3>Đơn hàng mới nhất</h3>
+                    <span>5 đơn gần đây</span>
+                  </div>
+                  {recentOrders.length === 0 ? (
+                    <p className="empty-state">Chưa có đơn hàng.</p>
+                  ) : (
+                    <div className="admin-dashboard-list">
+                      {recentOrders.map((order) => (
+                        <div className="admin-dashboard-row" key={order.id}>
+                          <div>
+                            <strong>Đơn #{order.id} · {order.customerName}</strong>
+                            <span>{order.createdAt}</span>
+                          </div>
+                          <div className="admin-dashboard-order-meta">
+                            <b>{order.formattedTotal}</b>
+                            <span className={`status-badge ${order.status}`}>{order.statusText}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button className="role-btn" onClick={() => setAdminTab("ORDERS")}>
+                    Xem tất cả đơn hàng
+                  </button>
+                </section>
+              </div>
+            </div>
+          )}
 
           {/* TAB 1: QUẢN LÝ SẢN PHẨM */}
           {adminTab === "PRODUCTS" && (
@@ -1298,12 +1699,18 @@ function App() {
                       <th>Địa chỉ nhận</th>
                       <th>Sản phẩm đặt</th>
                       <th>Tổng tiền</th>
+                      <th>Thanh toán</th>
                       <th>Trạng thái</th>
                       <th>Đổi trạng thái</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map(o => (
+                    {filteredAdminOrders.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="empty-state">Không tìm thấy đơn hàng phù hợp.</td>
+                      </tr>
+                    )}
+                    {filteredAdminOrders.map(o => (
                       <tr key={o.id}>
                         <td>
                           <div>#{o.id}</div>
@@ -1328,6 +1735,17 @@ function App() {
                         </td>
                         <td style={{ color: "#38bdf8", fontWeight: 700 }}>{o.formattedTotal}</td>
                         <td>
+                          <select
+                            className="payment-status-select"
+                            value={o.paymentStatus || "UNPAID"}
+                            disabled={!canManagePayment}
+                            onChange={(event) => handleUpdatePaymentStatus(o.id, event.target.value)}
+                          >
+                            <option value="UNPAID">Chưa thanh toán</option>
+                            <option value="PAID">Đã thanh toán</option>
+                          </select>
+                        </td>
+                        <td>
                           <span className={`status-badge ${o.status}`}>
                             {o.statusText}
                           </span>
@@ -1337,12 +1755,13 @@ function App() {
                             className="status-select"
                             value={o.status}
                             onChange={e => handleUpdateOrderStatus(o.id, e.target.value)}
+                            disabled={getStatusOptionsForRole(currentRole, o.status).length === 1}
                           >
-                            <option value="PENDING">Chờ duyệt</option>
-                            <option value="CONFIRMED">Đã xác nhận</option>
-                            <option value="SHIPPED">Đang giao hàng</option>
-                            <option value="DELIVERED">Đã giao hàng</option>
-                            <option value="CANCELLED">Hủy đơn</option>
+                            {getStatusOptionsForRole(currentRole, o.status).map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
                           </select>
                         </td>
                       </tr>
@@ -1403,6 +1822,7 @@ function App() {
                         onChange={e => setNewStaff({ ...newStaff, role: e.target.value })}
                       >
                         <option value="SALER">SALER - Nhân viên bán hàng</option>
+                        <option value="SHIPPER">SHIPPER - Nhân viên giao hàng</option>
                         <option value="MANAGER">MANAGER - Trưởng phòng quản lý</option>
                         <option value="ADMIN">ADMIN - Quản trị viên</option>
                       </select>

@@ -12,6 +12,7 @@ USE techstore_db;
 -- 2. Bảng Người dùng / Nhân sự (users)
 DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS cart_items;
 DROP TABLE IF EXISTS wishlists;
 DROP TABLE IF EXISTS addresses;
 DROP TABLE IF EXISTS refresh_tokens;
@@ -23,7 +24,7 @@ CREATE TABLE users (
     username VARCHAR(50) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     full_name VARCHAR(100) NOT NULL,
-    role ENUM('CUSTOMER', 'MANAGER', 'ADMIN', 'SALER') NOT NULL DEFAULT 'SALER',
+    role ENUM('CUSTOMER', 'MANAGER', 'ADMIN', 'SALER', 'SHIPPER') NOT NULL DEFAULT 'SALER',
     phone VARCHAR(20),
     email VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -86,6 +87,19 @@ CREATE TABLE wishlists (
     INDEX idx_wishlist_user (user_id),
     CONSTRAINT fk_wishlist_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_wishlist_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE cart_items (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    quantity INT NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_cart_user_product (user_id, product_id),
+    INDEX idx_cart_user (user_id),
+    CONSTRAINT fk_cart_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cart_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 4. Bảng Đơn hàng (orders)

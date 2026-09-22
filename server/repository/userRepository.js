@@ -21,7 +21,7 @@ export const userRepository = {
   },
   async findEmployees() {
     const rows = await UserModel.findAll({
-      where: { role: { [Op.in]: [Role.ADMIN, Role.MANAGER, Role.SALER] } },
+      where: { role: { [Op.in]: [Role.ADMIN, Role.MANAGER, Role.SALER, Role.SHIPPER] } },
       order: [["id", "DESC"]]
     });
     return rows.map(toEntity);

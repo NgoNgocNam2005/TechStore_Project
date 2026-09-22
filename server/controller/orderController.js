@@ -55,10 +55,27 @@ export const orderController = {
   async updateOrderStatus(req, res, next) {
     try {
       const { status } = req.body;
-      const data = await orderService.updateStatus(req.params.id, status);
+      const data = await orderService.updateStatus(req.params.id, status, req.user);
       res.json({
         success: true,
         message: `Đã cập nhật đơn hàng sang trạng thái "${data.statusText}"`,
+        data
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updatePaymentStatus(req, res, next) {
+    try {
+      const data = await orderService.updatePaymentStatus(
+        req.params.id,
+        req.body?.paymentStatus,
+        req.user
+      );
+      res.json({
+        success: true,
+        message: "Cap nhat trang thai thanh toan thanh cong",
         data
       });
     } catch (err) {

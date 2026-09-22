@@ -10,6 +10,8 @@ export const OrderMapper = {
       address: dto.address,
       items: processedItems,
       totalAmount: totalAmount,
+      paymentMethod: dto.paymentMethod,
+      paymentStatus: "UNPAID",
       note: dto.note
     });
   },

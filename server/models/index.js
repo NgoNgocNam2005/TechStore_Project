@@ -8,7 +8,7 @@ export const UserModel = sequelize.define("User", {
   username: { type: DataTypes.STRING(50), allowNull: false, unique: true },
   password: { type: DataTypes.STRING(255), allowNull: false },
   fullName: { type: DataTypes.STRING(100), allowNull: false, field: "full_name" },
-  role: { type: DataTypes.ENUM("CUSTOMER", "MANAGER", "ADMIN", "SALER"), allowNull: false },
+  role: { type: DataTypes.ENUM("CUSTOMER", "MANAGER", "ADMIN", "SALER", "SHIPPER"), allowNull: false },
   phone: DataTypes.STRING(20),
   email: DataTypes.STRING(100),
   createdAt: { type: DataTypes.DATE, field: "created_at" },
@@ -59,6 +59,15 @@ export const WishlistModel = sequelize.define("Wishlist", {
   productId: { type: DataTypes.BIGINT, allowNull: false, field: "product_id" },
   createdAt: { type: DataTypes.DATE, field: "created_at" },
 }, { tableName: "wishlists", ...common });
+
+export const CartItemModel = sequelize.define("CartItem", {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  userId: { type: DataTypes.BIGINT, allowNull: false, field: "user_id" },
+  productId: { type: DataTypes.BIGINT, allowNull: false, field: "product_id" },
+  quantity: { type: DataTypes.INTEGER, allowNull: false },
+  createdAt: { type: DataTypes.DATE, field: "created_at" },
+  updatedAt: { type: DataTypes.DATE, field: "updated_at" },
+}, { tableName: "cart_items", ...common });
 
 export const OrderModel = sequelize.define("Order", {
   id: {
@@ -197,6 +206,9 @@ export const ProductReviewModel = sequelize.define("ProductReview", {
 }, { tableName: "product_reviews", ...common });
 
 UserModel.hasMany(AddressModel, { foreignKey: "userId", as: "addresses" });
+UserModel.hasMany(CartItemModel, { foreignKey: "userId", as: "cartItems" });
+CartItemModel.belongsTo(ProductModel, { foreignKey: "productId", as: "product" });
+ProductModel.hasMany(CartItemModel, { foreignKey: "productId", as: "cartItems" });
 UserModel.hasMany(OrderModel, { foreignKey: "userId", as: "orders" });
 OrderModel.belongsTo(UserModel, { foreignKey: "userId", as: "user" });
 UserModel.hasMany(ProductReviewModel, { foreignKey: "userId", as: "reviews" });

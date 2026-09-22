@@ -17,6 +17,7 @@ export class UserResponseDTO {
       case "MANAGER": return "Trưởng phòng quản lý";
       case "SALER": return "Nhân viên bán hàng";
       case "CUSTOMER": return "Khách mua hàng";
+      case "SHIPPER": return "Nhân viên giao hàng";
       default: return role;
     }
   }

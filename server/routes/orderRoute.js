@@ -13,7 +13,8 @@ router.patch("/:id/cancel", authenticate, orderController.cancelOrder);
 router.get("/:id", authenticate, orderController.getOrderById);
 
 // Admin / Saler xem và duyệt đơn hàng
-router.get("/", authenticate, authorize("ADMIN", "MANAGER", "SALER"), orderController.getOrders);
-router.patch("/:id/status", authenticate, authorize("ADMIN", "MANAGER", "SALER"), orderController.updateOrderStatus);
+router.get("/", authenticate, authorize("ADMIN", "MANAGER", "SALER", "SHIPPER"), orderController.getOrders);
+router.patch("/:id/status", authenticate, authorize("ADMIN", "MANAGER", "SALER", "SHIPPER"), orderController.updateOrderStatus);
+router.patch("/:id/payment-status", authenticate, authorize("ADMIN", "MANAGER"), orderController.updatePaymentStatus);
 
 export default router;

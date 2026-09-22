@@ -52,6 +52,32 @@ const run = async () => {
     `);
     console.log("Đã kiểm tra bảng wishlists.");
 
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS cart_items (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        product_id BIGINT NOT NULL,
+        quantity INT NOT NULL CHECK (quantity > 0),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_cart_user_product (user_id, product_id),
+        INDEX idx_cart_user (user_id),
+        CONSTRAINT fk_cart_items_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_cart_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log("Đã kiểm tra bảng cart_items.");
+
+    const roleColumns = await sequelize.query("SHOW COLUMNS FROM users LIKE 'role'", {
+      type: QueryTypes.SELECT
+    });
+    if (roleColumns[0] && !String(roleColumns[0].Type).includes("SHIPPER")) {
+      await sequelize.query(
+        "ALTER TABLE users MODIFY role ENUM('CUSTOMER', 'MANAGER', 'ADMIN', 'SALER', 'SHIPPER') NOT NULL DEFAULT 'SALER'"
+      );
+      console.log("Đã bổ sung role SHIPPER cho users.role.");
+    }
+
     const columns = await sequelize.query("SHOW COLUMNS FROM orders LIKE 'user_id'", {
       type: QueryTypes.SELECT
     });

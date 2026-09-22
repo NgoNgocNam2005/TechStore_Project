@@ -16,6 +16,8 @@ const buildOrders = (rows) => {
       address: data.address,
       totalAmount: Number(data.totalAmount),
       status: data.status,
+      paymentMethod: data.paymentMethod,
+      paymentStatus: data.paymentStatus,
       note: data.note,
       createdAt: data.createdAt,
       items: (data.details || []).map((item) => new OrderDetail({
@@ -136,6 +138,8 @@ export const orderRepository = {
         address: orderEntity.address,
         totalAmount,
         status: "PENDING",
+        paymentMethod: orderEntity.paymentMethod || "COD",
+        paymentStatus: "UNPAID",
         note: orderEntity.note || null
       }, { transaction });
 
@@ -164,6 +168,17 @@ export const orderRepository = {
     if (!orderId) return null;
     const [affected] = await OrderModel.update(
       { status: newStatus },
+      { where: { id: orderId } }
+    );
+    if (affected === 0) return null;
+    return this.findById(orderId);
+  },
+
+  async updatePaymentStatus(id, paymentStatus) {
+    const orderId = normalizeId(id);
+    if (!orderId) return null;
+    const [affected] = await OrderModel.update(
+      { paymentStatus },
       { where: { id: orderId } }
     );
     if (affected === 0) return null;
